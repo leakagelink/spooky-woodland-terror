@@ -141,6 +141,7 @@ function Game() {
             if (e.kind === "boss") { color = "#ff00ff"; r = 5; }
             else if (e.kind === "runner") { color = "#ff7733"; r = 2.5; }
             else if (e.kind === "tank") { color = "#883333"; r = 4; }
+            else if (e.kind === "charger") { color = "#ffaa22"; r = 3.5; }
             ctx.fillStyle = color;
             ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
           });
