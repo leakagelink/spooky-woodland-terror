@@ -468,6 +468,8 @@ export class ForestHorrorGame {
       const tree = new THREE.Group();
       const trunk = new THREE.Mesh(trunkGeo, trunkMat);
       trunk.position.y = 3.5;
+      trunk.castShadow = true;
+      trunk.receiveShadow = true;
       tree.add(trunk);
       // Multi-cluster canopy for fuller look
       for (let j = 0; j < 3; j++) {
