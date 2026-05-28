@@ -1913,8 +1913,15 @@ export class ForestHorrorGame {
       const range = e.attackRange ?? 1.6;
       if (dist < range && e.attackCd <= 0) {
         e.attackCd = e.isGiant ? 2.0 : 1.2;
-        const dmg = e.damage ?? (e.type === "ghost" ? 8 : 12);
+        const baseDmg = e.damage ?? (e.type === "ghost" ? 8 : 12);
+        const dmg = baseDmg * this.dmgMul;
         this.hp -= dmg;
+        // Charger knockback
+        if (e.knockback && e.knockback > 0) {
+          const kbDir = new THREE.Vector3(this.pos.x - e.mesh.position.x, 0, this.pos.z - e.mesh.position.z).normalize();
+          this.pos.addScaledVector(kbDir, e.knockback);
+          this.shake = Math.max(this.shake, 0.9);
+        }
         this.shake = Math.max(this.shake, e.isGiant ? 1.0 : 0.4);
         this.sound.hurt();
         this.cb.onHealth(Math.max(0, this.hp));
