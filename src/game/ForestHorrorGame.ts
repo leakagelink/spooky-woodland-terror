@@ -114,7 +114,9 @@ export class ForestHorrorGame {
     this.buildPlayerWeapons();
     this.bindInput();
     this.loadZombieModel();
-    this.loadForestAssets();
+    // Forest GLB uses spec-gloss extension (not supported) → renders white.
+    // Skip it and rely on PBR-textured procedural trees in buildWorld().
+    // this.loadForestAssets();
 
     window.addEventListener("resize", this.onResize);
     this.loop();
@@ -419,11 +421,6 @@ export class ForestHorrorGame {
     fbxLoader.load(
       "/models/weapons/scar.fbx",
       (fbx) => {
-        const texLoader = new THREE.TextureLoader();
-        const tex = texLoader.load("/models/weapons/gun_texture.png");
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.flipY = false;
-
         // Fit gun into ~0.55 unit length
         const box = new THREE.Box3().setFromObject(fbx);
         const size = box.getSize(new THREE.Vector3());
@@ -436,14 +433,22 @@ export class ForestHorrorGame {
         fbx.position.sub(center);
         fbx.rotation.y = Math.PI / 2;
 
+        // Realistic dark gunmetal — gun_texture.png is a broken stub, so
+        // we use a procedural two-tone material based on mesh name.
         fbx.traverse((o) => {
           const m = o as THREE.Mesh;
           if (m.isMesh) {
+            const name = (m.name || "").toLowerCase();
+            const isGrip = /grip|stock|handle|wood/.test(name);
             m.material = new THREE.MeshStandardMaterial({
-              map: tex, color: 0xffffff, metalness: 0.6, roughness: 0.5,
+              color: isGrip ? 0x2a1d12 : 0x1a1d22,
+              metalness: isGrip ? 0.2 : 0.85,
+              roughness: isGrip ? 0.85 : 0.35,
+              emissive: 0x050505,
             });
           }
         });
+
 
         // Remove primitive children, keep group for position/animation
         body.visible = false;
