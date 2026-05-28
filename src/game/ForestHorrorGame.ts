@@ -184,6 +184,23 @@ export class ForestHorrorGame {
     this.muzzleLight.position.set(0.3, -0.2, -0.5);
 
     this.scene.add(this.camera);
+
+    // Rain particles
+    const rainCount = 1500;
+    this.rainPositions = new Float32Array(rainCount * 3);
+    for (let i = 0; i < rainCount; i++) {
+      this.rainPositions[i * 3] = (Math.random() - 0.5) * 60;
+      this.rainPositions[i * 3 + 1] = Math.random() * 25;
+      this.rainPositions[i * 3 + 2] = (Math.random() - 0.5) * 60;
+    }
+    const rainGeo = new THREE.BufferGeometry();
+    rainGeo.setAttribute("position", new THREE.BufferAttribute(this.rainPositions, 3));
+    const rainMat = new THREE.PointsMaterial({
+      color: 0xaaccee, size: 0.08, transparent: true, opacity: 0.55,
+      depthWrite: false,
+    });
+    this.rain = new THREE.Points(rainGeo, rainMat);
+    this.scene.add(this.rain);
   }
 
   private buildPlayerWeapons() {
