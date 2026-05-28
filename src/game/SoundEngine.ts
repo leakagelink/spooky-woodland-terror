@@ -169,7 +169,7 @@ export class SoundEngine {
     osc.stop(now + 0.31);
   }
 
-  zombieGrowl() {
+  zombieGrowl(dx = 0, dz = 0) {
     if (!this.ctx || !this.master) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
@@ -188,12 +188,14 @@ export class SoundEngine {
     g.gain.setValueAtTime(0.001, now);
     g.gain.exponentialRampToValueAtTime(0.3, now + 0.05);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-    osc.connect(filter).connect(g).connect(this.master);
+    const dest = (dx !== 0 || dz !== 0) ? this.positional(dx, dz, 35) : this.master;
+    if (!dest) return;
+    osc.connect(filter).connect(g).connect(dest);
     osc.start(now); lfo.start(now);
     osc.stop(now + 0.61); lfo.stop(now + 0.61);
   }
 
-  ghostWhisper() {
+  ghostWhisper(dx = 0, dz = 0) {
     if (!this.ctx || !this.master) return;
     const now = this.ctx.currentTime;
     const dur = 1.2;
@@ -210,9 +212,12 @@ export class SoundEngine {
     g.gain.setValueAtTime(0.001, now);
     g.gain.linearRampToValueAtTime(0.15, now + 0.3);
     g.gain.linearRampToValueAtTime(0.001, now + dur);
-    src.connect(bp).connect(g).connect(this.master);
+    const dest = (dx !== 0 || dz !== 0) ? this.positional(dx, dz, 40) : this.master;
+    if (!dest) return;
+    src.connect(bp).connect(g).connect(dest);
     src.start(now);
   }
+
 
   thunder() {
     if (!this.ctx || !this.master) return;
