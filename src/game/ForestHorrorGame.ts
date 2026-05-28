@@ -18,6 +18,9 @@ type Enemy = {
   speed: number;
   attackCd: number;
   alive: boolean;
+  hitFlash: number;
+  origMats: Map<THREE.Mesh, THREE.Material | THREE.Material[]>;
+  lastGrowl: number;
 };
 
 export class ForestHorrorGame {
