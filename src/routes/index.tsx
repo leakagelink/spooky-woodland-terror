@@ -198,14 +198,35 @@ function Game() {
             DARK FOREST
           </h1>
           <p className="text-zinc-400 text-sm md:text-base">
-            Rifle, Shotgun, Sniper + Grenades. Survive waves of zombies, runners, tanks & bosses.
+            Rifle, Shotgun, Sniper + Frag/Smoke/Incendiary grenades. Survive zombies, runners, tanks, chargers & bosses.
           </p>
           {highScore > 0 && (
             <p className="text-yellow-400 font-mono text-sm">🏆 HIGH SCORE: {highScore.toLocaleString()}</p>
           )}
+
+          {/* Difficulty selector */}
+          <div className="space-y-2">
+            <div className="text-xs uppercase tracking-widest text-red-400">Difficulty</div>
+            <div className="flex gap-2 justify-center">
+              {(["easy", "normal", "hard"] as Difficulty[]).map((d) => (
+                <button key={d} onClick={() => setDifficulty(d)}
+                  className={`px-4 py-2 text-xs font-bold rounded border tracking-widest transition ${difficulty === d
+                    ? "bg-red-700 border-red-300 text-white shadow-[0_0_15px_rgba(200,0,0,0.6)]"
+                    : "bg-black/40 border-white/30 text-white/70 hover:border-red-500"}`}>
+                  {d.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-zinc-500">
+              {difficulty === "easy" && "Less damage, slower spawns, 5 grenades."}
+              {difficulty === "normal" && "Balanced experience, 3 grenades."}
+              {difficulty === "hard" && "More damage, faster spawns, 2 grenades."}
+            </p>
+          </div>
+
           <div className="text-left text-xs text-zinc-500 space-y-1 bg-white/5 p-4 rounded-lg border border-white/10">
-            <p><span className="text-red-400">PC:</span> WASD · Shift sprint · C crouch · Mouse look · LMB shoot · RMB ADS · R reload · G grenade · 1/2/3/4 weapon · F torch · ESC pause</p>
-            <p><span className="text-red-400">Mobile:</span> Joystick · Right side look · Buttons: fire/ADS/grenade/reload/crouch/torch/pause</p>
+            <p><span className="text-red-400">PC:</span> WASD · Shift sprint · C crouch · Mouse look · LMB shoot · RMB ADS · R reload · G grenade · B cycle nade · 1/2/3/4 weapon · F torch · ESC pause</p>
+            <p><span className="text-red-400">Mobile:</span> Joystick · Right side look · Buttons: fire/ADS/grenade/cycle/reload/crouch/torch/pause</p>
           </div>
           <button
             onClick={() => setStarted(true)}
