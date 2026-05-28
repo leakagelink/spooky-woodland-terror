@@ -16,11 +16,19 @@ export type GameCallbacks = {
   onDeath: () => void;
   onDamage: () => void;
   onLightning: () => void;
+  onWave?: (wave: number) => void;
+  onScore?: (score: number, high: number) => void;
+  onStamina?: (s: number) => void;
+  onPause?: (paused: boolean) => void;
+  onMinimap?: (data: { px: number; pz: number; yaw: number; enemies: { x: number; z: number; kind: string }[]; pickups: { x: number; z: number; kind: string }[] }) => void;
 };
+
+type ZombieVariant = "normal" | "runner" | "tank";
 
 type Enemy = {
   mesh: THREE.Object3D;
   type: "zombie" | "ghost" | "giant_ent" | "fallen_angel";
+  variant?: ZombieVariant;
   hp: number;
   speed: number;
   attackCd: number;
@@ -43,7 +51,17 @@ type Enemy = {
   isGiant?: boolean;
   attackRange?: number;
   damage?: number;
+  scoreValue?: number;
 };
+
+type Pickup = {
+  mesh: THREE.Object3D;
+  kind: "medkit" | "ammo";
+  pos: THREE.Vector3;
+  bob: number;
+  alive: boolean;
+};
+
 
 export class ForestHorrorGame {
   private renderer: THREE.WebGLRenderer;
@@ -84,9 +102,28 @@ export class ForestHorrorGame {
   private knifeMesh!: THREE.Group;
 
   private running = true;
+  private paused = false;
   private raf = 0;
   private spawnTimer = 0;
-  private readonly maxActiveZombies = 3;
+  private maxActiveZombies = 3;
+
+  // Wave + score
+  private wave = 1;
+  private waveKills = 0;
+  private readonly killsPerWave = 8;
+  private score = 0;
+  private highScore = 0;
+
+  // Stamina
+  private stamina = 100;
+  private sprinting = false;
+
+  // Pickups
+  private pickups: Pickup[] = [];
+
+  // Minimap throttle
+  private minimapCd = 0;
+
 
   // Realism systems
   private sound = new SoundEngine();
