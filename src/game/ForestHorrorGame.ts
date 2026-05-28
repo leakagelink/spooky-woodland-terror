@@ -936,8 +936,8 @@ export class ForestHorrorGame {
       mixer = new THREE.AnimationMixer(model);
       const clip = this.zombieAnimations[0];
       const action = mixer.clipAction(clip);
-      // Runners animate faster, tanks slower
-      const baseTs = variant === "runner" ? 1.8 : variant === "tank" ? 0.7 : 1;
+      // Runners/Chargers animate faster, tanks slower
+      const baseTs = variant === "runner" ? 1.8 : variant === "charger" ? 2.1 : variant === "tank" ? 0.7 : 1;
       action.timeScale = baseTs + Math.random() * 0.25;
       action.play();
     }
