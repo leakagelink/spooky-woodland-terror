@@ -214,23 +214,79 @@ export class ForestHorrorGame {
     const isGhost = Math.random() < 0.35;
     const enemy = new THREE.Group();
     if (isGhost) {
-      const body = new THREE.Mesh(
-        new THREE.SphereGeometry(0.7, 12, 12),
-        new THREE.MeshStandardMaterial({
-          color: 0xaaccff, transparent: true, opacity: 0.5, emissive: 0x335577, emissiveIntensity: 0.6,
-        })
+      // Flowing robe (cone tapered down, wide top)
+      const robeGeo = new THREE.ConeGeometry(0.9, 2.4, 16, 6, true);
+      const robeMat = new THREE.MeshStandardMaterial({
+        color: 0xc8d8ee, transparent: true, opacity: 0.55,
+        emissive: 0x6688bb, emissiveIntensity: 1.2,
+        side: THREE.DoubleSide, depthWrite: false,
+      });
+      const robe = new THREE.Mesh(robeGeo, robeMat);
+      robe.position.y = 1.4;
+      robe.rotation.x = Math.PI; // wide end up
+      enemy.add(robe);
+
+      // Outer aura (larger, more transparent)
+      const auraGeo = new THREE.ConeGeometry(1.2, 2.8, 16, 4, true);
+      const auraMat = new THREE.MeshBasicMaterial({
+        color: 0x88aaff, transparent: true, opacity: 0.18,
+        side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+      const aura = new THREE.Mesh(auraGeo, auraMat);
+      aura.position.y = 1.4;
+      aura.rotation.x = Math.PI;
+      enemy.add(aura);
+
+      // Skull head
+      const headMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff, emissive: 0xaaccff, emissiveIntensity: 1.5,
+        transparent: true, opacity: 0.9,
+      });
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 16), headMat);
+      head.position.y = 2.4;
+      head.scale.set(1, 1.15, 0.9);
+      enemy.add(head);
+
+      // Hollow black eye sockets
+      const socketMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+      const socketL = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), socketMat);
+      socketL.position.set(-0.11, 2.45, 0.24);
+      socketL.scale.set(1, 1.3, 0.5);
+      const socketR = socketL.clone();
+      socketR.position.x = 0.11;
+      enemy.add(socketL, socketR);
+
+      // Glowing eyes inside sockets
+      const eyeMat = new THREE.MeshBasicMaterial({ color: 0x00ddff });
+      const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), eyeMat);
+      eyeL.position.set(-0.11, 2.45, 0.28);
+      const eyeR = eyeL.clone();
+      eyeR.position.x = 0.11;
+      enemy.add(eyeL, eyeR);
+
+      // Mouth (jagged dark slit)
+      const mouth = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.06, 0.02),
+        new THREE.MeshBasicMaterial({ color: 0x000000 })
       );
-      body.position.y = 1.2;
-      const head = new THREE.Mesh(
-        new THREE.SphereGeometry(0.4, 10, 10),
-        new THREE.MeshStandardMaterial({
-          color: 0xddeeff, transparent: true, opacity: 0.7, emissive: 0x6688aa, emissiveIntensity: 0.8,
-        })
-      );
-      head.position.y = 2;
-      enemy.add(body, head);
-      const glow = new THREE.PointLight(0x6699cc, 1.5, 5);
-      glow.position.y = 1.5;
+      mouth.position.set(0, 2.25, 0.3);
+      enemy.add(mouth);
+
+      // Trailing wisps (small spheres at bottom for ghostly tail)
+      for (let w = 0; w < 4; w++) {
+        const wisp = new THREE.Mesh(
+          new THREE.SphereGeometry(0.25 - w * 0.04, 8, 8),
+          new THREE.MeshBasicMaterial({
+            color: 0x88aaff, transparent: true, opacity: 0.25 - w * 0.04,
+            depthWrite: false, blending: THREE.AdditiveBlending,
+          })
+        );
+        wisp.position.y = 0.4 - w * 0.15;
+        enemy.add(wisp);
+      }
+
+      const glow = new THREE.PointLight(0x66aaff, 3, 7);
+      glow.position.y = 1.8;
       enemy.add(glow);
     } else {
       const skinMat = new THREE.MeshStandardMaterial({ color: 0x4a5a3a, roughness: 0.9 });
