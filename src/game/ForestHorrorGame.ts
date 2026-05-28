@@ -286,6 +286,47 @@ export class ForestHorrorGame {
     this.gunMesh.position.set(0.13, -0.18, -0.4);
     this.camera.add(this.gunMesh);
 
+    // Async-load detailed SCAR FBX and replace primitive geometry
+    const fbxLoader = new FBXLoader();
+    fbxLoader.load(
+      "/models/weapons/scar.fbx",
+      (fbx) => {
+        const texLoader = new THREE.TextureLoader();
+        const tex = texLoader.load("/models/weapons/gun_texture.png");
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.flipY = false;
+
+        // Fit gun into ~0.55 unit length
+        const box = new THREE.Box3().setFromObject(fbx);
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        const scale = 0.55 / maxDim;
+        fbx.scale.setScalar(scale);
+
+        // Center model and orient barrel forward (-Z)
+        const center = box.getCenter(new THREE.Vector3()).multiplyScalar(scale);
+        fbx.position.sub(center);
+        fbx.rotation.y = Math.PI / 2;
+
+        fbx.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) {
+            m.material = new THREE.MeshStandardMaterial({
+              map: tex, color: 0xffffff, metalness: 0.6, roughness: 0.5,
+            });
+          }
+        });
+
+        // Remove primitive children, keep group for position/animation
+        body.visible = false;
+        barrel.visible = false;
+        grip.visible = false;
+        this.gunMesh.add(fbx);
+      },
+      undefined,
+      (err) => console.warn("Failed to load SCAR gun model", err)
+    );
+
     // Knife
     this.knifeMesh = new THREE.Group();
     const blade = new THREE.Mesh(
