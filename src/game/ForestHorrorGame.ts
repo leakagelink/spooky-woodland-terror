@@ -192,6 +192,50 @@ export class ForestHorrorGame {
     );
   }
 
+  private loadGiantEntModel() {
+    const loader = new FBXLoader();
+    loader.load(
+      "/models/enemies/giant_ent.fbx",
+      (fbx) => {
+        const texLoader = new THREE.TextureLoader();
+        const tex = texLoader.load(
+          "/models/enemies/giant_ent.fbm/dunklerwaldent3d-modell_basecolor.JPEG",
+        );
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.flipY = false;
+
+        // Normalize to ~6m tall base (will scale further at spawn)
+        const box = new THREE.Box3().setFromObject(fbx);
+        const size = box.getSize(new THREE.Vector3());
+        const baseScale = 6.0 / (size.y || 1);
+        fbx.scale.setScalar(baseScale);
+
+        fbx.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) {
+            m.castShadow = true;
+            m.material = new THREE.MeshStandardMaterial({
+              map: tex,
+              color: 0x6b5a3a,
+              roughness: 0.95,
+              metalness: 0.0,
+              emissive: 0x1a0a02,
+              emissiveIntensity: 0.2,
+            });
+          }
+        });
+
+        this.giantEntTemplate = fbx;
+        this.giantEntAnimations = fbx.animations || [];
+      },
+      undefined,
+      (err) => {
+        console.warn("Failed to load giant ent FBX", err);
+      },
+    );
+  }
+
+
   private loadForestAssets() {
     const loader = new GLTFLoader();
     loader.load(
