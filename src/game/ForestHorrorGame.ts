@@ -846,7 +846,13 @@ export class ForestHorrorGame {
     this.scene.remove(e.mesh);
     this.kills++;
     this.cb.onKills(this.kills);
-    this.cb.onMessage(e.type === "ghost" ? "Ghost banished!" : "Zombie down!");
+    if (e.type === "giant_ent") {
+      this.giantSpawned = false;
+      this.cb.onMessage("🏆 GIANT ENT SLAIN!");
+      this.shake = Math.max(this.shake, 0.8);
+    } else {
+      this.cb.onMessage(e.type === "ghost" ? "Ghost banished!" : "Zombie down!");
+    }
   }
 
   private updatePlayer(dt: number) {
