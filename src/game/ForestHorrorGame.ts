@@ -777,9 +777,29 @@ export class ForestHorrorGame {
       e.mesh.lookAt(this.pos.x, e.mesh.position.y, this.pos.z);
 
       if (e.type === "ghost") {
-        e.mesh.position.y = Math.sin(t * 2 + e.mesh.id) * 0.3;
+        e.mesh.position.y = Math.sin(t * 2 + e.phase) * 0.3;
+        // Floating arms sway
+        if (e.limbs) {
+          e.limbs.armL.rotation.x = -1.2 + Math.sin(t * 1.5 + e.phase) * 0.2;
+          e.limbs.armR.rotation.x = -1.2 + Math.cos(t * 1.5 + e.phase) * 0.2;
+          e.limbs.head.rotation.z = Math.sin(t * 0.8 + e.phase) * 0.15;
+          if (e.limbs.jaw) e.limbs.jaw.rotation.x = Math.sin(t * 3) * 0.15;
+        }
       } else {
-        e.mesh.position.y = Math.abs(Math.sin(t * 4 + e.mesh.id)) * 0.08;
+        // Zombie shamble: bobbing + limp walk cycle
+        const walk = t * 4 + e.phase;
+        e.mesh.position.y = Math.abs(Math.sin(walk)) * 0.05;
+        if (e.limbs) {
+          const swing = Math.sin(walk) * 0.6;
+          e.limbs.legL.rotation.x = swing;
+          e.limbs.legR.rotation.x = -swing;
+          // Arms stay reaching but sway slightly
+          e.limbs.armL.rotation.x = -1.0 + Math.sin(walk + 0.5) * 0.15;
+          e.limbs.armR.rotation.x = -1.0 - Math.sin(walk + 0.5) * 0.15;
+          // Head bob/tilt
+          e.limbs.head.rotation.z = Math.sin(walk * 0.5) * 0.12;
+          e.limbs.torso.rotation.z = Math.sin(walk) * 0.06;
+        }
       }
 
       // Restore materials after hit flash
