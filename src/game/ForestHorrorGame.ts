@@ -93,14 +93,18 @@ export class ForestHorrorGame {
   }
 
   private buildWorld() {
-    // Ambient very low
-    this.ambient = new THREE.AmbientLight(0x0a1015, 0.4);
+    // Ambient — brighter so player can see scene
+    this.ambient = new THREE.AmbientLight(0x4a5a70, 1.1);
     this.scene.add(this.ambient);
 
     // Moonlight
-    const moon = new THREE.DirectionalLight(0x4a6a90, 0.25);
+    const moon = new THREE.DirectionalLight(0x8aa6cc, 0.9);
     moon.position.set(20, 40, 10);
     this.scene.add(moon);
+
+    // Hemisphere for sky/ground tint
+    const hemi = new THREE.HemisphereLight(0x223344, 0x0a0f08, 0.6);
+    this.scene.add(hemi);
 
     // Ground
     const groundGeo = new THREE.PlaneGeometry(300, 300, 64, 64);
@@ -110,26 +114,23 @@ export class ForestHorrorGame {
       pos.setZ(i, Math.sin(x * 0.3) * 0.3 + Math.cos(y * 0.2) * 0.4 + Math.random() * 0.2);
     }
     groundGeo.computeVertexNormals();
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0x1a2418, roughness: 1, metalness: 0 });
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x35402a, roughness: 1, metalness: 0 });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
     this.scene.add(ground);
 
     // Trees
     const trunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 6, 8);
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x231811, roughness: 1 });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3a2818, roughness: 1 });
     const leafGeo = new THREE.ConeGeometry(2.2, 5, 8);
-    const leafMat = new THREE.MeshStandardMaterial({ color: 0x0a1a0c, roughness: 1 });
+    const leafMat = new THREE.MeshStandardMaterial({ color: 0x1a3018, roughness: 1 });
     for (let i = 0; i < 140; i++) {
       const tree = new THREE.Group();
       const trunk = new THREE.Mesh(trunkGeo, trunkMat);
       trunk.position.y = 3;
-      trunk.castShadow = true;
       tree.add(trunk);
       const leaves = new THREE.Mesh(leafGeo, leafMat);
       leaves.position.y = 7.5;
-      leaves.castShadow = true;
       tree.add(leaves);
       const angle = Math.random() * Math.PI * 2;
       const r = 8 + Math.random() * 110;
@@ -143,21 +144,18 @@ export class ForestHorrorGame {
 
     // Some rocks
     const rockGeo = new THREE.DodecahedronGeometry(1, 0);
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 1, flatShading: true });
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x4a4a50, roughness: 1, flatShading: true });
     for (let i = 0; i < 40; i++) {
       const rock = new THREE.Mesh(rockGeo, rockMat);
       const angle = Math.random() * Math.PI * 2;
       const r = 5 + Math.random() * 100;
       rock.position.set(Math.cos(angle) * r, 0.3 + Math.random() * 0.4, Math.sin(angle) * r);
       rock.scale.setScalar(0.5 + Math.random() * 1.2);
-      rock.castShadow = true;
       this.scene.add(rock);
     }
 
-    // Flashlight attached to camera
-    this.flashlight = new THREE.SpotLight(0xfff0c0, 6, 35, Math.PI / 7, 0.4, 1.2);
-    this.flashlight.castShadow = true;
-    this.flashlight.shadow.mapSize.set(512, 512);
+    // Flashlight attached to camera (no shadows for mobile perf)
+    this.flashlight = new THREE.SpotLight(0xfff0c0, 60, 45, Math.PI / 6, 0.5, 1.2);
     this.camera.add(this.flashlight);
     this.flashlight.position.set(0.3, -0.2, 0);
     const target = new THREE.Object3D();
