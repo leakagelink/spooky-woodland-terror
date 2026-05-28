@@ -240,6 +240,51 @@ export class ForestHorrorGame {
     );
   }
 
+  private loadFallenAngelModel() {
+    const loader = new FBXLoader();
+    loader.load(
+      "/models/enemies/fallen_angel.fbx",
+      (fbx) => {
+        const texLoader = new THREE.TextureLoader();
+        const tex = texLoader.load(
+          "/models/enemies/fallen_angel.fbm/fallenangelwarrior3dmodel_basecolor.JPEG",
+        );
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.flipY = false;
+
+        // Normalize to ~3.5m tall - imposing but not as huge as the ent
+        const box = new THREE.Box3().setFromObject(fbx);
+        const size = box.getSize(new THREE.Vector3());
+        const baseScale = 3.5 / (size.y || 1);
+        fbx.scale.setScalar(baseScale);
+
+        fbx.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) {
+            m.castShadow = true;
+            m.material = new THREE.MeshStandardMaterial({
+              map: tex,
+              color: 0xb0a890,
+              roughness: 0.55,
+              metalness: 0.45,
+              emissive: 0x330000,
+              emissiveIntensity: 0.4,
+            });
+          }
+        });
+
+        this.fallenAngelTemplate = fbx;
+        this.fallenAngelAnimations = fbx.animations || [];
+      },
+      undefined,
+      (err) => {
+        console.warn("Failed to load fallen angel FBX", err);
+      },
+    );
+  }
+
+
+
 
   private loadForestAssets() {
     const loader = new GLTFLoader();
