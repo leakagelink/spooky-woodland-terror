@@ -325,6 +325,12 @@ export class ForestHorrorGame {
     enemy.position.set(this.pos.x + Math.cos(angle) * dist, 0, this.pos.z + Math.sin(angle) * dist);
     this.scene.add(enemy);
 
+    const origMats = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+    enemy.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) origMats.set(m, m.material);
+    });
+
     this.enemies.push({
       mesh: enemy,
       type: isGhost ? "ghost" : "zombie",
@@ -332,6 +338,9 @@ export class ForestHorrorGame {
       speed: isGhost ? 2.2 : 1.6,
       attackCd: 0,
       alive: true,
+      hitFlash: 0,
+      origMats,
+      lastGrowl: 0,
     });
   }
 
