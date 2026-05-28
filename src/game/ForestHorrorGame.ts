@@ -96,6 +96,10 @@ export class ForestHorrorGame {
   // FBX zombie model
   private zombieTemplate: THREE.Group | null = null;
   private zombieAnimations: THREE.AnimationClip[] = [];
+  // Giant ent (boss) model
+  private giantEntTemplate: THREE.Group | null = null;
+  private giantEntAnimations: THREE.AnimationClip[] = [];
+  private giantSpawned = false;
 
   constructor(container: HTMLElement, cb: GameCallbacks) {
     this.container = container;
