@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 import { SoundEngine } from "./SoundEngine";
 
 export type GameCallbacks = {
@@ -12,7 +14,7 @@ export type GameCallbacks = {
 };
 
 type Enemy = {
-  mesh: THREE.Group;
+  mesh: THREE.Object3D;
   type: "zombie" | "ghost";
   hp: number;
   speed: number;
@@ -28,6 +30,8 @@ type Enemy = {
     jaw?: THREE.Object3D;
   };
   phase: number;
+  mixer?: THREE.AnimationMixer;
+  isFbxModel?: boolean;
 };
 
 export class ForestHorrorGame {
@@ -81,6 +85,10 @@ export class ForestHorrorGame {
   private shake = 0;
   private footstepCd = 0;
 
+  // FBX zombie model
+  private zombieTemplate: THREE.Group | null = null;
+  private zombieAnimations: THREE.AnimationClip[] = [];
+
   constructor(container: HTMLElement, cb: GameCallbacks) {
     this.container = container;
     this.cb = cb;
@@ -104,6 +112,7 @@ export class ForestHorrorGame {
     this.buildWorld();
     this.buildPlayerWeapons();
     this.bindInput();
+    this.loadZombieModel();
 
     window.addEventListener("resize", this.onResize);
     this.loop();
@@ -111,7 +120,52 @@ export class ForestHorrorGame {
     this.cb.onHealth(this.hp);
     this.cb.onAmmo(this.ammo, this.weapon);
     this.cb.onKills(this.kills);
-    this.cb.onMessage("Survive the forest...");
+    this.cb.onMessage("Loading zombies...");
+  }
+
+  private loadZombieModel() {
+    const loader = new FBXLoader();
+    loader.load(
+      "/models/zombie/zombie.fbx",
+      (fbx) => {
+        const texLoader = new THREE.TextureLoader();
+        const tex = texLoader.load("/models/zombie/world_people_colors.png");
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.flipY = false;
+
+        // Normalize scale: FBX often comes in cm, we want ~1.8 units tall
+        const box = new THREE.Box3().setFromObject(fbx);
+        const size = box.getSize(new THREE.Vector3());
+        const scale = 1.8 / (size.y || 1);
+        fbx.scale.setScalar(scale);
+
+        // Apply texture + zombie tint to all meshes
+        fbx.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) {
+            m.castShadow = true;
+            const mat = new THREE.MeshStandardMaterial({
+              map: tex,
+              color: 0x88aa6a, // sickly green tint over texture
+              roughness: 0.9,
+              metalness: 0,
+              emissive: 0x1a0a08,
+              emissiveIntensity: 0.15,
+            });
+            m.material = mat;
+          }
+        });
+
+        this.zombieTemplate = fbx;
+        this.zombieAnimations = fbx.animations || [];
+        this.cb.onMessage("Survive the forest...");
+      },
+      undefined,
+      (err) => {
+        console.warn("Failed to load zombie FBX, using fallback geometry", err);
+        this.cb.onMessage("Survive the forest...");
+      }
+    );
   }
 
   private buildWorld() {
@@ -362,6 +416,58 @@ export class ForestHorrorGame {
       enemy.add(glow);
 
       limbs = { armL, armR, legL: armL, legR: armR, head, torso: head, jaw };
+    } else if (this.zombieTemplate) {
+      // ===== FBX ZOMBIE MODEL with baked animation =====
+      const model = SkeletonUtils.clone(this.zombieTemplate) as THREE.Group;
+      // Tint each clone slightly differently for variety
+      const tint = new THREE.Color().setHSL(0.25 + Math.random() * 0.08, 0.3 + Math.random() * 0.2, 0.32 + Math.random() * 0.1);
+      model.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh && m.material) {
+          const mat = (m.material as THREE.MeshStandardMaterial).clone();
+          mat.color.copy(tint);
+          m.material = mat;
+          m.castShadow = true;
+        }
+      });
+      enemy.add(model);
+
+      // Setup animation mixer with first available clip (usually walk/idle)
+      let mixer: THREE.AnimationMixer | undefined;
+      if (this.zombieAnimations.length > 0) {
+        mixer = new THREE.AnimationMixer(model);
+        const clip = this.zombieAnimations[0];
+        const action = mixer.clipAction(clip);
+        action.timeScale = 1 + Math.random() * 0.3;
+        action.play();
+      }
+
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 20 + Math.random() * 25;
+      enemy.position.set(this.pos.x + Math.cos(angle) * dist, 0, this.pos.z + Math.sin(angle) * dist);
+      this.scene.add(enemy);
+
+      const origMats = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+      enemy.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) origMats.set(m, m.material);
+      });
+
+      this.enemies.push({
+        mesh: enemy,
+        type: "zombie",
+        hp: 60,
+        speed: 1.6,
+        attackCd: 0,
+        alive: true,
+        hitFlash: 0,
+        origMats,
+        lastGrowl: 0,
+        phase: Math.random() * Math.PI * 2,
+        mixer,
+        isFbxModel: true,
+      });
+      return;
     } else {
       // ===== ROTTING ZOMBIE: detailed humanoid with limb pivots =====
       const skinMat = new THREE.MeshStandardMaterial({
@@ -785,18 +891,20 @@ export class ForestHorrorGame {
           e.limbs.head.rotation.z = Math.sin(t * 0.8 + e.phase) * 0.15;
           if (e.limbs.jaw) e.limbs.jaw.rotation.x = Math.sin(t * 3) * 0.15;
         }
+      } else if (e.isFbxModel) {
+        // FBX model uses baked skeletal animation
+        if (e.mixer) e.mixer.update(dt);
+        e.mesh.position.y = 0;
       } else {
-        // Zombie shamble: bobbing + limp walk cycle
+        // Zombie shamble: bobbing + limp walk cycle (fallback procedural)
         const walk = t * 4 + e.phase;
         e.mesh.position.y = Math.abs(Math.sin(walk)) * 0.05;
         if (e.limbs) {
           const swing = Math.sin(walk) * 0.6;
           e.limbs.legL.rotation.x = swing;
           e.limbs.legR.rotation.x = -swing;
-          // Arms stay reaching but sway slightly
           e.limbs.armL.rotation.x = -1.0 + Math.sin(walk + 0.5) * 0.15;
           e.limbs.armR.rotation.x = -1.0 - Math.sin(walk + 0.5) * 0.15;
-          // Head bob/tilt
           e.limbs.head.rotation.z = Math.sin(walk * 0.5) * 0.12;
           e.limbs.torso.rotation.z = Math.sin(walk) * 0.06;
         }
