@@ -190,14 +190,14 @@ export class ForestHorrorGame {
     );
     grip.position.set(0, -0.18, 0.1);
     this.gunMesh.add(body, barrel, grip);
-    this.gunMesh.position.set(0.3, -0.3, -0.6);
+    this.gunMesh.position.set(0.13, -0.18, -0.4);
     this.camera.add(this.gunMesh);
 
     // Knife
     this.knifeMesh = new THREE.Group();
     const blade = new THREE.Mesh(
       new THREE.BoxGeometry(0.04, 0.02, 0.35),
-      new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 1, roughness: 0.15 })
+      new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 1, roughness: 0.15, emissive: 0x222222 })
     );
     blade.position.z = -0.2;
     const handle = new THREE.Mesh(
@@ -205,7 +205,7 @@ export class ForestHorrorGame {
       new THREE.MeshStandardMaterial({ color: 0x3a2010, roughness: 0.9 })
     );
     this.knifeMesh.add(blade, handle);
-    this.knifeMesh.position.set(0.35, -0.3, -0.5);
+    this.knifeMesh.position.set(0.15, -0.18, -0.4);
     this.knifeMesh.visible = false;
     this.camera.add(this.knifeMesh);
   }
@@ -214,23 +214,79 @@ export class ForestHorrorGame {
     const isGhost = Math.random() < 0.35;
     const enemy = new THREE.Group();
     if (isGhost) {
-      const body = new THREE.Mesh(
-        new THREE.SphereGeometry(0.7, 12, 12),
-        new THREE.MeshStandardMaterial({
-          color: 0xaaccff, transparent: true, opacity: 0.5, emissive: 0x335577, emissiveIntensity: 0.6,
-        })
+      // Flowing robe (cone tapered down, wide top)
+      const robeGeo = new THREE.ConeGeometry(0.9, 2.4, 16, 6, true);
+      const robeMat = new THREE.MeshStandardMaterial({
+        color: 0xc8d8ee, transparent: true, opacity: 0.55,
+        emissive: 0x6688bb, emissiveIntensity: 1.2,
+        side: THREE.DoubleSide, depthWrite: false,
+      });
+      const robe = new THREE.Mesh(robeGeo, robeMat);
+      robe.position.y = 1.4;
+      robe.rotation.x = Math.PI; // wide end up
+      enemy.add(robe);
+
+      // Outer aura (larger, more transparent)
+      const auraGeo = new THREE.ConeGeometry(1.2, 2.8, 16, 4, true);
+      const auraMat = new THREE.MeshBasicMaterial({
+        color: 0x88aaff, transparent: true, opacity: 0.18,
+        side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+      const aura = new THREE.Mesh(auraGeo, auraMat);
+      aura.position.y = 1.4;
+      aura.rotation.x = Math.PI;
+      enemy.add(aura);
+
+      // Skull head
+      const headMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff, emissive: 0xaaccff, emissiveIntensity: 1.5,
+        transparent: true, opacity: 0.9,
+      });
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 16), headMat);
+      head.position.y = 2.4;
+      head.scale.set(1, 1.15, 0.9);
+      enemy.add(head);
+
+      // Hollow black eye sockets
+      const socketMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+      const socketL = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), socketMat);
+      socketL.position.set(-0.11, 2.45, 0.24);
+      socketL.scale.set(1, 1.3, 0.5);
+      const socketR = socketL.clone();
+      socketR.position.x = 0.11;
+      enemy.add(socketL, socketR);
+
+      // Glowing eyes inside sockets
+      const eyeMat = new THREE.MeshBasicMaterial({ color: 0x00ddff });
+      const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), eyeMat);
+      eyeL.position.set(-0.11, 2.45, 0.28);
+      const eyeR = eyeL.clone();
+      eyeR.position.x = 0.11;
+      enemy.add(eyeL, eyeR);
+
+      // Mouth (jagged dark slit)
+      const mouth = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.06, 0.02),
+        new THREE.MeshBasicMaterial({ color: 0x000000 })
       );
-      body.position.y = 1.2;
-      const head = new THREE.Mesh(
-        new THREE.SphereGeometry(0.4, 10, 10),
-        new THREE.MeshStandardMaterial({
-          color: 0xddeeff, transparent: true, opacity: 0.7, emissive: 0x6688aa, emissiveIntensity: 0.8,
-        })
-      );
-      head.position.y = 2;
-      enemy.add(body, head);
-      const glow = new THREE.PointLight(0x6699cc, 1.5, 5);
-      glow.position.y = 1.5;
+      mouth.position.set(0, 2.25, 0.3);
+      enemy.add(mouth);
+
+      // Trailing wisps (small spheres at bottom for ghostly tail)
+      for (let w = 0; w < 4; w++) {
+        const wisp = new THREE.Mesh(
+          new THREE.SphereGeometry(0.25 - w * 0.04, 8, 8),
+          new THREE.MeshBasicMaterial({
+            color: 0x88aaff, transparent: true, opacity: 0.25 - w * 0.04,
+            depthWrite: false, blending: THREE.AdditiveBlending,
+          })
+        );
+        wisp.position.y = 0.4 - w * 0.15;
+        enemy.add(wisp);
+      }
+
+      const glow = new THREE.PointLight(0x66aaff, 3, 7);
+      glow.position.y = 1.8;
       enemy.add(glow);
     } else {
       const skinMat = new THREE.MeshStandardMaterial({ color: 0x4a5a3a, roughness: 0.9 });
@@ -413,23 +469,38 @@ export class ForestHorrorGame {
     this.camera.position.copy(this.pos);
 
     if (this.fireCd > 0) this.fireCd -= dt;
+
+    const t = this.clock.getElapsedTime();
+    const sway = move.lengthSq() > 0 ? 0.012 : 0.004;
+    const baseX = 0.13, baseY = -0.18, baseZ = -0.4;
+
     if (this.muzzleFlash > 0) {
-      this.muzzleLight.intensity = 8;
+      this.muzzleLight.intensity = 12;
       this.muzzleFlash -= dt;
-      // recoil
-      this.gunMesh.position.z = -0.55 + Math.sin(this.muzzleFlash * 40) * 0.02;
+      const kick = this.muzzleFlash / 0.08; // 1 -> 0
+      this.gunMesh.position.set(baseX, baseY + kick * 0.04, baseZ + kick * 0.08);
+      this.gunMesh.rotation.x = kick * 0.3;
     } else {
       this.muzzleLight.intensity = 0;
-      this.gunMesh.position.z = -0.6;
+      this.gunMesh.rotation.x = 0;
+      this.gunMesh.position.x = baseX + Math.sin(t * 6) * sway;
+      this.gunMesh.position.y = baseY + Math.abs(Math.cos(t * 6)) * sway;
+      this.gunMesh.position.z = baseZ;
     }
 
-    // weapon sway
-    const t = this.clock.getElapsedTime();
-    const sway = move.lengthSq() > 0 ? 0.015 : 0.005;
-    this.gunMesh.position.x = 0.3 + Math.sin(t * 6) * sway;
-    this.gunMesh.position.y = -0.3 + Math.abs(Math.cos(t * 6)) * sway;
-    this.knifeMesh.position.x = 0.35 + Math.sin(t * 6) * sway;
-    this.knifeMesh.position.y = -0.3 + Math.abs(Math.cos(t * 6)) * sway;
+    // Knife slash animation when attacking
+    if (this.weapon === "knife" && this.fireCd > 0) {
+      const p = 1 - this.fireCd / 0.4; // 0 -> 1
+      const slash = Math.sin(p * Math.PI); // 0 -> 1 -> 0
+      this.knifeMesh.position.set(baseX - slash * 0.25, baseY + slash * 0.1, baseZ - slash * 0.15);
+      this.knifeMesh.rotation.z = slash * 1.2;
+      this.knifeMesh.rotation.y = -slash * 0.8;
+    } else {
+      this.knifeMesh.rotation.set(0, 0, 0);
+      this.knifeMesh.position.x = baseX + Math.sin(t * 6) * sway;
+      this.knifeMesh.position.y = baseY + Math.abs(Math.cos(t * 6)) * sway;
+      this.knifeMesh.position.z = baseZ;
+    }
   }
 
   private updateEnemies(dt: number) {
