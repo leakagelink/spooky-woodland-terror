@@ -85,6 +85,10 @@ export class ForestHorrorGame {
   private shake = 0;
   private footstepCd = 0;
 
+  // FBX zombie model
+  private zombieTemplate: THREE.Group | null = null;
+  private zombieAnimations: THREE.AnimationClip[] = [];
+
   constructor(container: HTMLElement, cb: GameCallbacks) {
     this.container = container;
     this.cb = cb;
