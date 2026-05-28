@@ -553,26 +553,48 @@ export class ForestHorrorGame {
   }
 
   private updateEnemies(dt: number) {
+    const t = this.clock.getElapsedTime();
     for (const e of this.enemies) {
       if (!e.alive) continue;
       const toPlayer = new THREE.Vector3(this.pos.x - e.mesh.position.x, 0, this.pos.z - e.mesh.position.z);
       const dist = toPlayer.length();
       if (dist > 0.01) toPlayer.normalize();
-      e.mesh.position.addScaledVector(toPlayer, e.speed * dt);
+
+      // Stagger when hit
+      const moveSpeed = e.hitFlash > 0 ? e.speed * 0.2 : e.speed;
+      e.mesh.position.addScaledVector(toPlayer, moveSpeed * dt);
       e.mesh.lookAt(this.pos.x, e.mesh.position.y, this.pos.z);
 
       if (e.type === "ghost") {
-        e.mesh.position.y = Math.sin(this.clock.getElapsedTime() * 2 + e.mesh.id) * 0.3;
+        e.mesh.position.y = Math.sin(t * 2 + e.mesh.id) * 0.3;
       } else {
-        // zombie walk bob
-        e.mesh.position.y = Math.abs(Math.sin(this.clock.getElapsedTime() * 4 + e.mesh.id)) * 0.08;
+        e.mesh.position.y = Math.abs(Math.sin(t * 4 + e.mesh.id)) * 0.08;
+      }
+
+      // Restore materials after hit flash
+      if (e.hitFlash > 0) {
+        e.hitFlash -= dt;
+        if (e.hitFlash <= 0) {
+          e.origMats.forEach((mat, mesh) => { mesh.material = mat; });
+        }
+      }
+
+      // Periodic growl/whisper if close enough
+      if (dist < 18 && t - e.lastGrowl > 3 + Math.random() * 4) {
+        e.lastGrowl = t;
+        if (e.type === "zombie") this.sound.zombieGrowl();
+        else this.sound.ghostWhisper();
       }
 
       e.attackCd -= dt;
       if (dist < 1.6 && e.attackCd <= 0) {
         e.attackCd = 1.2;
-        this.hp -= e.type === "ghost" ? 8 : 12;
+        const dmg = e.type === "ghost" ? 8 : 12;
+        this.hp -= dmg;
+        this.shake = Math.max(this.shake, 0.4);
+        this.sound.hurt();
         this.cb.onHealth(Math.max(0, this.hp));
+        this.cb.onDamage();
         this.cb.onMessage(e.type === "ghost" ? "Ghost touched you!" : "Zombie bite!");
         if (this.hp <= 0) {
           this.hp = 0;
@@ -581,7 +603,6 @@ export class ForestHorrorGame {
         }
       }
     }
-    // cull dead
     this.enemies = this.enemies.filter((e) => e.alive);
   }
 
