@@ -357,8 +357,13 @@ function Game() {
           <button
             onTouchStart={(e) => { e.preventDefault(); gameRef.current?.throwGrenade(); }}
             onClick={() => gameRef.current?.throwGrenade()}
-            className="w-14 h-14 rounded-full bg-orange-700/70 border-2 border-orange-300 text-white text-xs font-bold"
-          >🧨</button>
+            className="w-14 h-14 rounded-full bg-orange-700/70 border-2 border-orange-300 text-white text-base font-bold"
+          >{grenadeKind === "frag" ? "💥" : grenadeKind === "smoke" ? "💨" : "🔥"}</button>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); gameRef.current?.cycleGrenade(); }}
+            onClick={() => gameRef.current?.cycleGrenade()}
+            className="w-14 h-14 rounded-full bg-zinc-700/70 border-2 border-zinc-300 text-white text-[10px] font-bold"
+          >CYCLE</button>
         </div>
       </div>
 
