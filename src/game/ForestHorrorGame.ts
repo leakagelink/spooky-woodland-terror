@@ -23,7 +23,10 @@ export type GameCallbacks = {
   onMinimap?: (data: { px: number; pz: number; yaw: number; enemies: { x: number; z: number; kind: string }[]; pickups: { x: number; z: number; kind: string }[] }) => void;
 };
 
-type ZombieVariant = "normal" | "runner" | "tank";
+type ZombieVariant = "normal" | "runner" | "tank" | "charger";
+export type GrenadeKind = "frag" | "smoke" | "incendiary";
+export type Difficulty = "easy" | "normal" | "hard";
+type BurnZone = { mesh: THREE.Mesh; pos: THREE.Vector3; t: number; radius: number; ringMat: THREE.Material };
 
 export type WeaponKind = "gun" | "shotgun" | "sniper" | "knife";
 
