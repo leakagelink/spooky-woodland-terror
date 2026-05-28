@@ -326,7 +326,7 @@ export class ForestHorrorGame {
   public setMoveInput(x: number, y: number) { this.moveInput.set(x, y); }
   public toggleFlashlight() {
     this.flashlightOn = !this.flashlightOn;
-    this.flashlight.intensity = this.flashlightOn ? 6 : 0;
+    this.flashlight.intensity = this.flashlightOn ? 60 : 0;
     this.cb.onMessage(this.flashlightOn ? "Flashlight ON" : "Flashlight OFF");
   }
   public setWeapon(w: "gun" | "knife") {
