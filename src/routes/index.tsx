@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { ForestHorrorGame as ForestHorrorGameType, WeaponKind } from "@/game/ForestHorrorGame";
+import type { ForestHorrorGame as ForestHorrorGameType, WeaponKind, GrenadeKind, Difficulty } from "@/game/ForestHorrorGame";
 import { Joystick } from "@/game/Joystick";
 
 export const Route = createFileRoute("/")({
