@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { SoundEngine } from "./SoundEngine";
 
 export type GameCallbacks = {
   onHealth: (hp: number) => void;
