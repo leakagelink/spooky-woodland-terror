@@ -875,10 +875,12 @@ export class ForestHorrorGame {
     // Pick variant — chance increases with wave
     let variant: ZombieVariant = "normal";
     const roll = Math.random();
-    const runnerChance = Math.min(0.4, 0.1 + this.wave * 0.05);
-    const tankChance = Math.min(0.25, 0.05 + this.wave * 0.03);
+    const runnerChance = Math.min(0.35, 0.1 + this.wave * 0.04);
+    const tankChance = Math.min(0.22, 0.05 + this.wave * 0.025);
+    const chargerChance = this.wave >= 2 ? Math.min(0.2, 0.04 + this.wave * 0.025) : 0;
     if (roll < runnerChance) variant = "runner";
     else if (roll < runnerChance + tankChance) variant = "tank";
+    else if (roll < runnerChance + tankChance + chargerChance) variant = "charger";
 
     const enemy = new THREE.Group();
     const model = SkeletonUtils.clone(this.zombieTemplate) as THREE.Group;
@@ -890,20 +892,16 @@ export class ForestHorrorGame {
     let speed = 1.6;
     let damage = 12;
     let scoreValue = 100;
+    let knockback = 0;
     if (variant === "runner") {
       tint = new THREE.Color(0x8a2a2a);
-      scaleMul = 0.9;
-      hp = 35;
-      speed = 3.2;
-      damage = 8;
-      scoreValue = 150;
+      scaleMul = 0.9; hp = 35; speed = 3.2; damage = 8; scoreValue = 150;
     } else if (variant === "tank") {
       tint = new THREE.Color(0x2a3a1a);
-      scaleMul = 1.35;
-      hp = 180;
-      speed = 1.0;
-      damage = 22;
-      scoreValue = 300;
+      scaleMul = 1.35; hp = 180; speed = 1.0; damage = 22; scoreValue = 300;
+    } else if (variant === "charger") {
+      tint = new THREE.Color(0xffaa22);
+      scaleMul = 1.1; hp = 80; speed = 4.2; damage = 18; scoreValue = 250; knockback = 4;
     } else {
       tint = new THREE.Color().setHSL(
         0.25 + Math.random() * 0.08,
