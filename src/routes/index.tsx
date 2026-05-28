@@ -26,10 +26,14 @@ function Game() {
   const [kills, setKills] = useState(0);
   const [msg, setMsg] = useState("");
   const [dead, setDead] = useState(false);
+  const [bloodFlash, setBloodFlash] = useState(false);
+  const [lightning, setLightning] = useState(false);
 
   useEffect(() => {
     if (!started || !containerRef.current) return;
     let msgTimer: ReturnType<typeof setTimeout>;
+    let bloodTimer: ReturnType<typeof setTimeout>;
+    let lightTimer: ReturnType<typeof setTimeout>;
     const game = new ForestHorrorGame(containerRef.current, {
       onHealth: setHp,
       onAmmo: (a, w) => { setAmmo(a); setWeapon(w); },
@@ -40,9 +44,22 @@ function Game() {
         msgTimer = setTimeout(() => setMsg(""), 1500);
       },
       onDeath: () => setDead(true),
+      onDamage: () => {
+        setBloodFlash(true);
+        clearTimeout(bloodTimer);
+        bloodTimer = setTimeout(() => setBloodFlash(false), 350);
+      },
+      onLightning: () => {
+        setLightning(true);
+        clearTimeout(lightTimer);
+        lightTimer = setTimeout(() => setLightning(false), 200);
+      },
     });
     gameRef.current = game;
-    return () => { clearTimeout(msgTimer); game.dispose(); gameRef.current = null; };
+    return () => {
+      clearTimeout(msgTimer); clearTimeout(bloodTimer); clearTimeout(lightTimer);
+      game.dispose(); gameRef.current = null;
+    };
   }, [started]);
 
   const handleMove = useCallback((x: number, y: number) => {
