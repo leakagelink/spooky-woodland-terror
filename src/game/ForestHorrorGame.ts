@@ -473,353 +473,47 @@ export class ForestHorrorGame {
   }
 
   private spawnEnemy() {
-    const isGhost = Math.random() < 0.35;
+    // Only spawn realistic FBX zombies. Skip until the model is loaded.
+    if (!this.zombieTemplate) return;
+
     const enemy = new THREE.Group();
-    let limbs: Enemy["limbs"];
+    const model = SkeletonUtils.clone(this.zombieTemplate) as THREE.Group;
 
-    if (isGhost) {
-      // ===== WRAITH GHOST: tattered shroud + glowing skull =====
-      const shroudMat = new THREE.MeshStandardMaterial({
-        color: 0xdce6f5, transparent: true, opacity: 0.42,
-        emissive: 0x4466aa, emissiveIntensity: 0.9,
-        side: THREE.DoubleSide, depthWrite: false, roughness: 1,
-      });
-      // Layered shroud cones for volumetric feel
-      for (let i = 0; i < 3; i++) {
-        const c = new THREE.Mesh(
-          new THREE.ConeGeometry(0.75 + i * 0.15, 2.6, 18, 8, true),
-          shroudMat.clone()
-        );
-        (c.material as THREE.MeshStandardMaterial).opacity = 0.42 - i * 0.12;
-        c.position.y = 1.3;
-        c.rotation.x = Math.PI;
-        enemy.add(c);
+    // Tint each clone slightly differently for variety
+    const tint = new THREE.Color().setHSL(
+      0.25 + Math.random() * 0.08,
+      0.3 + Math.random() * 0.2,
+      0.32 + Math.random() * 0.1,
+    );
+    model.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh && m.material) {
+        const mat = (m.material as THREE.MeshStandardMaterial).clone();
+        mat.color.copy(tint);
+        m.material = mat;
+        m.castShadow = true;
       }
-      // Tattered cloth strips (vertical planes around bottom)
-      const stripMat = new THREE.MeshStandardMaterial({
-        color: 0xb8c6dc, transparent: true, opacity: 0.55,
-        emissive: 0x334466, emissiveIntensity: 0.5,
-        side: THREE.DoubleSide, depthWrite: false,
-      });
-      for (let s = 0; s < 10; s++) {
-        const a = (s / 10) * Math.PI * 2;
-        const strip = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.18, 1.4 + Math.random() * 0.6),
-          stripMat
-        );
-        strip.position.set(Math.cos(a) * 0.7, 0.7, Math.sin(a) * 0.7);
-        strip.lookAt(0, 0.7, 0);
-        enemy.add(strip);
-      }
-      // Outer aura
-      const aura = new THREE.Mesh(
-        new THREE.ConeGeometry(1.3, 3, 18, 4, true),
-        new THREE.MeshBasicMaterial({
-          color: 0x88aaff, transparent: true, opacity: 0.15,
-          side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
-        })
-      );
-      aura.position.y = 1.4; aura.rotation.x = Math.PI;
-      enemy.add(aura);
+    });
+    enemy.add(model);
 
-      // Skeletal arms reaching out
-      const boneMat = new THREE.MeshStandardMaterial({
-        color: 0xeae0c8, emissive: 0x223344, emissiveIntensity: 0.3, roughness: 0.7,
-      });
-      const armGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.7, 6);
-      const armL = new THREE.Group();
-      const armLBone = new THREE.Mesh(armGeo, boneMat);
-      armLBone.position.y = -0.35;
-      armL.add(armLBone);
-      armL.position.set(-0.45, 1.7, 0.1);
-      armL.rotation.set(-1.2, 0, 0.3);
-      const armR = armL.clone();
-      armR.position.x = 0.45;
-      armR.rotation.z = -0.3;
-      enemy.add(armL, armR);
-
-      // Skull head — elongated
-      const skullMat = new THREE.MeshStandardMaterial({
-        color: 0xf2eedd, emissive: 0x99bbdd, emissiveIntensity: 1.1,
-        transparent: true, opacity: 0.92, roughness: 0.6,
-      });
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 20, 20), skullMat);
-      head.position.y = 2.45;
-      head.scale.set(0.95, 1.2, 0.95);
-      enemy.add(head);
-
-      // Deep eye sockets
-      const socketMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-      const socketL = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 12), socketMat);
-      socketL.position.set(-0.12, 2.5, 0.24); socketL.scale.set(1, 1.3, 0.6);
-      const socketR = socketL.clone(); socketR.position.x = 0.12;
-      enemy.add(socketL, socketR);
-
-      // Burning cyan eyes
-      const eyeMat = new THREE.MeshBasicMaterial({ color: 0x00eeff });
-      const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), eyeMat);
-      eyeL.position.set(-0.12, 2.5, 0.3);
-      const eyeR = eyeL.clone(); eyeR.position.x = 0.12;
-      enemy.add(eyeL, eyeR);
-
-      // Jaw / mouth cavity (skull teeth)
-      const jaw = new THREE.Group();
-      const jawBase = new THREE.Mesh(
-        new THREE.BoxGeometry(0.22, 0.04, 0.04),
-        new THREE.MeshBasicMaterial({ color: 0x000000 })
-      );
-      jaw.add(jawBase);
-      for (let tx = 0; tx < 6; tx++) {
-        const tooth = new THREE.Mesh(
-          new THREE.BoxGeometry(0.025, 0.05, 0.025),
-          new THREE.MeshStandardMaterial({ color: 0xf0e8d0 })
-        );
-        tooth.position.set(-0.09 + tx * 0.036, -0.03, 0);
-        jaw.add(tooth);
-      }
-      jaw.position.set(0, 2.25, 0.28);
-      enemy.add(jaw);
-
-      const glow = new THREE.PointLight(0x66aaff, 3.5, 9);
-      glow.position.y = 1.8;
-      enemy.add(glow);
-
-      limbs = { armL, armR, legL: armL, legR: armR, head, torso: head, jaw };
-    } else if (this.zombieTemplate) {
-      // ===== FBX ZOMBIE MODEL with baked animation =====
-      const model = SkeletonUtils.clone(this.zombieTemplate) as THREE.Group;
-      // Tint each clone slightly differently for variety
-      const tint = new THREE.Color().setHSL(0.25 + Math.random() * 0.08, 0.3 + Math.random() * 0.2, 0.32 + Math.random() * 0.1);
-      model.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.isMesh && m.material) {
-          const mat = (m.material as THREE.MeshStandardMaterial).clone();
-          mat.color.copy(tint);
-          m.material = mat;
-          m.castShadow = true;
-        }
-      });
-      enemy.add(model);
-
-      // Setup animation mixer with first available clip (usually walk/idle)
-      let mixer: THREE.AnimationMixer | undefined;
-      if (this.zombieAnimations.length > 0) {
-        mixer = new THREE.AnimationMixer(model);
-        const clip = this.zombieAnimations[0];
-        const action = mixer.clipAction(clip);
-        action.timeScale = 1 + Math.random() * 0.3;
-        action.play();
-      }
-
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 20 + Math.random() * 25;
-      enemy.position.set(this.pos.x + Math.cos(angle) * dist, 0, this.pos.z + Math.sin(angle) * dist);
-      this.scene.add(enemy);
-
-      const origMats = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
-      enemy.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.isMesh) origMats.set(m, m.material);
-      });
-
-      this.enemies.push({
-        mesh: enemy,
-        type: "zombie",
-        hp: 60,
-        speed: 1.6,
-        attackCd: 0,
-        alive: true,
-        hitFlash: 0,
-        origMats,
-        lastGrowl: 0,
-        phase: Math.random() * Math.PI * 2,
-        mixer,
-        isFbxModel: true,
-      });
-      return;
-    } else {
-      // ===== ROTTING ZOMBIE: detailed humanoid with limb pivots =====
-      const skinMat = new THREE.MeshStandardMaterial({
-        color: 0x5e6b3e, roughness: 0.95, metalness: 0,
-        emissive: 0x1a1208, emissiveIntensity: 0.2,
-      });
-      const skinDarkMat = new THREE.MeshStandardMaterial({
-        color: 0x3a4528, roughness: 1,
-      });
-      const shirtMat = new THREE.MeshStandardMaterial({
-        color: 0x3a2418, roughness: 1,
-      });
-      const pantsMat = new THREE.MeshStandardMaterial({
-        color: 0x1a1612, roughness: 1,
-      });
-      const bloodMat = new THREE.MeshStandardMaterial({
-        color: 0x5a0808, roughness: 0.6, emissive: 0x220000, emissiveIntensity: 0.2,
-      });
-
-      // Torso (tapered, hunched)
-      const torso = new THREE.Mesh(
-        new THREE.BoxGeometry(0.55, 0.85, 0.32),
-        shirtMat
-      );
-      torso.position.y = 1.15;
-      torso.rotation.x = 0.2; // hunched forward
-      // Torn shirt: lower belly exposed
-      const belly = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5, 0.18, 0.3),
-        skinMat
-      );
-      belly.position.set(0, -0.5, 0.01);
-      torso.add(belly);
-      // Exposed ribs
-      for (let r = 0; r < 3; r++) {
-        const rib = new THREE.Mesh(
-          new THREE.TorusGeometry(0.18, 0.012, 4, 12, Math.PI),
-          new THREE.MeshStandardMaterial({ color: 0xe0d4b8, roughness: 0.8 })
-        );
-        rib.position.set(0, -0.25 + r * 0.07, 0.16);
-        rib.rotation.x = Math.PI / 2;
-        torso.add(rib);
-      }
-      // Blood stain on chest
-      const blood1 = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), bloodMat);
-      blood1.position.set(0.1, 0.1, 0.17); blood1.scale.set(1, 1.4, 0.2);
-      torso.add(blood1);
-      enemy.add(torso);
-
-      // Neck
-      const neck = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.08, 0.09, 0.12, 8),
-        skinDarkMat
-      );
-      neck.position.set(0, 1.7, 0.05);
-      enemy.add(neck);
-
-      // Head — slightly oversized, tilted
-      const head = new THREE.Group();
-      const skull = new THREE.Mesh(
-        new THREE.SphereGeometry(0.24, 16, 16),
-        skinMat
-      );
-      skull.scale.set(1, 1.1, 1.05);
-      head.add(skull);
-      // Sunken cheeks (darker patches)
-      const cheek = new THREE.Mesh(
-        new THREE.SphereGeometry(0.08, 8, 8),
-        skinDarkMat
-      );
-      cheek.position.set(-0.12, -0.04, 0.16); cheek.scale.set(1, 1, 0.4);
-      head.add(cheek);
-      const cheek2 = cheek.clone(); cheek2.position.x = 0.12; head.add(cheek2);
-      // Eye sockets (deep)
-      const eyeSocketMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-      const sL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeSocketMat);
-      sL.position.set(-0.09, 0.04, 0.2); sL.scale.set(1.1, 1, 0.4);
-      const sR = sL.clone(); sR.position.x = 0.09;
-      head.add(sL, sR);
-      // Glowing red pupils
-      const pupilMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
-      const pL = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 6), pupilMat);
-      pL.position.set(-0.09, 0.04, 0.24);
-      const pR = pL.clone(); pR.position.x = 0.09;
-      head.add(pL, pR);
-      // Open jaw with teeth
-      const mouth = new THREE.Mesh(
-        new THREE.BoxGeometry(0.18, 0.1, 0.04),
-        new THREE.MeshBasicMaterial({ color: 0x100000 })
-      );
-      mouth.position.set(0, -0.13, 0.22);
-      head.add(mouth);
-      for (let tx = 0; tx < 5; tx++) {
-        const tooth = new THREE.Mesh(
-          new THREE.BoxGeometry(0.022, 0.04, 0.02),
-          new THREE.MeshStandardMaterial({ color: 0xc8b890 })
-        );
-        tooth.position.set(-0.07 + tx * 0.035, -0.1, 0.24);
-        head.add(tooth);
-      }
-      // Blood dripping from mouth
-      const drip = new THREE.Mesh(
-        new THREE.SphereGeometry(0.04, 6, 6), bloodMat
-      );
-      drip.position.set(0.04, -0.2, 0.22); drip.scale.set(1, 2.2, 0.4);
-      head.add(drip);
-      // Patchy hair (dark scalp)
-      const hair = new THREE.Mesh(
-        new THREE.SphereGeometry(0.25, 12, 12, 0, Math.PI * 2, 0, Math.PI / 2.2),
-        new THREE.MeshStandardMaterial({ color: 0x0a0805, roughness: 1 })
-      );
-      hair.position.y = 0.04;
-      head.add(hair);
-
-      head.position.set(0, 1.85, 0.05);
-      head.rotation.x = -0.15; // chin down
-      enemy.add(head);
-
-      // Arms with shoulder pivot — outstretched zombie pose
-      const upperArmGeo = new THREE.CylinderGeometry(0.07, 0.06, 0.42, 8);
-      const forearmGeo = new THREE.CylinderGeometry(0.06, 0.055, 0.42, 8);
-      const handGeo = new THREE.BoxGeometry(0.12, 0.16, 0.08);
-
-      const makeArm = (side: number) => {
-        const shoulder = new THREE.Group();
-        const upper = new THREE.Mesh(upperArmGeo, skinMat);
-        upper.position.y = -0.21;
-        const elbow = new THREE.Group();
-        elbow.position.y = -0.42;
-        const fore = new THREE.Mesh(forearmGeo, skinMat);
-        fore.position.y = -0.21;
-        const hand = new THREE.Mesh(handGeo, skinDarkMat);
-        hand.position.y = -0.5;
-        // Bloody fingers hint
-        const bloodHand = new THREE.Mesh(
-          new THREE.SphereGeometry(0.05, 6, 6), bloodMat
-        );
-        bloodHand.position.y = -0.05; bloodHand.scale.set(1, 0.4, 1);
-        hand.add(bloodHand);
-        elbow.add(fore, hand);
-        shoulder.add(upper, elbow);
-        shoulder.position.set(side * 0.32, 1.55, 0.05);
-        shoulder.rotation.x = -1.0; // reaching forward
-        shoulder.rotation.z = side * 0.15;
-        return shoulder;
-      };
-      const armL = makeArm(-1);
-      const armR = makeArm(1);
-      enemy.add(armL, armR);
-
-      // Legs with hip pivot
-      const thighGeo = new THREE.CylinderGeometry(0.1, 0.085, 0.5, 8);
-      const shinGeo = new THREE.CylinderGeometry(0.085, 0.075, 0.46, 8);
-      const footGeo = new THREE.BoxGeometry(0.16, 0.08, 0.26);
-
-      const makeLeg = (side: number) => {
-        const hip = new THREE.Group();
-        const thigh = new THREE.Mesh(thighGeo, pantsMat);
-        thigh.position.y = -0.25;
-        const knee = new THREE.Group();
-        knee.position.y = -0.5;
-        const shin = new THREE.Mesh(shinGeo, pantsMat);
-        shin.position.y = -0.23;
-        const foot = new THREE.Mesh(footGeo, new THREE.MeshStandardMaterial({ color: 0x100808, roughness: 1 }));
-        foot.position.set(0, -0.5, 0.05);
-        knee.add(shin, foot);
-        hip.add(thigh, knee);
-        hip.position.set(side * 0.15, 1.0, 0);
-        return hip;
-      };
-      const legL = makeLeg(-1);
-      const legR = makeLeg(1);
-      enemy.add(legL, legR);
-
-      enemy.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = true; });
-
-      limbs = { armL, armR, legL, legR, head, torso };
+    // Setup animation mixer with first available clip (usually walk/idle)
+    let mixer: THREE.AnimationMixer | undefined;
+    if (this.zombieAnimations.length > 0) {
+      mixer = new THREE.AnimationMixer(model);
+      const clip = this.zombieAnimations[0];
+      const action = mixer.clipAction(clip);
+      action.timeScale = 1 + Math.random() * 0.3;
+      action.play();
     }
 
     // Spawn around player at distance
     const angle = Math.random() * Math.PI * 2;
     const dist = 20 + Math.random() * 25;
-    enemy.position.set(this.pos.x + Math.cos(angle) * dist, 0, this.pos.z + Math.sin(angle) * dist);
+    enemy.position.set(
+      this.pos.x + Math.cos(angle) * dist,
+      0,
+      this.pos.z + Math.sin(angle) * dist,
+    );
     this.scene.add(enemy);
 
     const origMats = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
@@ -830,18 +524,20 @@ export class ForestHorrorGame {
 
     this.enemies.push({
       mesh: enemy,
-      type: isGhost ? "ghost" : "zombie",
-      hp: isGhost ? 40 : 60,
-      speed: isGhost ? 2.2 : 1.6,
+      type: "zombie",
+      hp: 60,
+      speed: 1.6,
       attackCd: 0,
       alive: true,
       hitFlash: 0,
       origMats,
       lastGrowl: 0,
-      limbs,
       phase: Math.random() * Math.PI * 2,
+      mixer,
+      isFbxModel: true,
     });
   }
+
 
   private bindInput() {
     const canvas = this.renderer.domElement;
