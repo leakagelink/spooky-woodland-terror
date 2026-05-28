@@ -1698,6 +1698,38 @@ export class ForestHorrorGame {
       this.gunMesh.position.z = baseZ;
     }
 
+    // Apply ADS offset (pull weapon to center) — applies to whichever gun is visible.
+    // Sniper goes further in to bring scope to eye.
+    const adsOffset = this.weapon === "sniper" ? 0.18 : 0.1;
+    const adsCenter = -baseX; // pull toward 0 on X
+    const activeMesh =
+      this.weapon === "shotgun" ? this.shotgunMesh :
+      this.weapon === "sniper" ? this.sniperMesh :
+      this.weapon === "knife" ? null :
+      this.gunMesh;
+    if (activeMesh && this.weapon !== "knife" && this.reloading <= 0) {
+      // Lerp toward ADS pose
+      const ax = baseX + adsCenter * this.adsT;
+      const ay = baseY + 0.18 * this.adsT - (this.weapon === "sniper" ? 0.04 : 0);
+      const az = baseZ + adsOffset * this.adsT;
+      if (activeMesh !== this.gunMesh) {
+        // For shotgun/sniper, follow same sway + ADS
+        activeMesh.rotation.set(gunBaseRotX, gunBaseRotY * (1 - this.adsT), gunBaseRotZ * (1 - this.adsT));
+        activeMesh.position.x = ax + Math.sin(t * 6) * sway * (1 - this.adsT);
+        activeMesh.position.y = ay + Math.abs(Math.cos(t * 6)) * sway * (1 - this.adsT);
+        activeMesh.position.z = az;
+      } else {
+        // Blend rifle existing pos toward ADS center
+        activeMesh.position.x = THREE.MathUtils.lerp(activeMesh.position.x, ax, this.adsT);
+        activeMesh.position.y = THREE.MathUtils.lerp(activeMesh.position.y, ay, this.adsT);
+        activeMesh.position.z = THREE.MathUtils.lerp(activeMesh.position.z, az, this.adsT);
+      }
+      // Hide sniper rifle when fully ADS'd — UI scope overlay takes over
+      if (this.weapon === "sniper") {
+        this.sniperMesh.visible = this.adsT < 0.85;
+      }
+    }
+
     // Knife slash animation when attacking
     if (this.weapon === "knife" && this.fireCd > 0) {
       const p = 1 - this.fireCd / 0.4; // 0 -> 1
@@ -1712,6 +1744,7 @@ export class ForestHorrorGame {
       this.knifeMesh.position.z = baseZ;
     }
   }
+
 
   private updateEnemies(dt: number) {
     const t = this.clock.getElapsedTime();
