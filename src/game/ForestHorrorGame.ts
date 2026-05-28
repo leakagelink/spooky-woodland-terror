@@ -1564,7 +1564,7 @@ export class ForestHorrorGame {
       this.cb.onMessage("🏆 FALLEN ANGEL VANQUISHED! +3500");
       this.shake = Math.max(this.shake, 0.9);
     } else {
-      const tag = e.variant === "runner" ? "Runner down!" : e.variant === "tank" ? "Tank down!" : "Zombie down!";
+      const tag = e.variant === "runner" ? "Runner down!" : e.variant === "tank" ? "Tank down!" : e.variant === "charger" ? "Charger down!" : "Zombie down!";
       this.cb.onMessage(e.type === "ghost" ? "Ghost banished!" : tag);
     }
   }
