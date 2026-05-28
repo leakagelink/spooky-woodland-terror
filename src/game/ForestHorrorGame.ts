@@ -1339,16 +1339,28 @@ export class ForestHorrorGame {
       move.add(forward.clone().multiplyScalar(-this.moveInput.y));
       move.add(right.clone().multiplyScalar(this.moveInput.x));
     }
+    let sprintActive = false;
     if (move.lengthSq() > 0) {
       move.normalize();
-      const sprint = this.keys["ShiftLeft"] ? 1.6 : 1.0;
-      this.pos.addScaledVector(move, 4 * sprint * dt);
+      const wantsSprint = !!(this.keys["ShiftLeft"] || this.keys["ShiftRight"]);
+      sprintActive = wantsSprint && this.stamina > 5;
+      const sprintMul = sprintActive ? 1.7 : 1.0;
+      this.pos.addScaledVector(move, 4 * sprintMul * dt);
       this.footstepCd -= dt;
       if (this.footstepCd <= 0) {
         this.sound.footstep();
-        this.footstepCd = sprint > 1 ? 0.32 : 0.45;
+        this.footstepCd = sprintActive ? 0.3 : 0.45;
       }
     }
+    this.sprinting = sprintActive;
+    // Stamina drain / regen
+    if (sprintActive) {
+      this.stamina = Math.max(0, this.stamina - 28 * dt);
+    } else {
+      this.stamina = Math.min(100, this.stamina + 18 * dt);
+    }
+    this.cb.onStamina?.(this.stamina);
+
     // Clamp inside world
     const r = Math.hypot(this.pos.x, this.pos.z);
     if (r > 120) {
