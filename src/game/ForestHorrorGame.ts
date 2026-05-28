@@ -1584,15 +1584,19 @@ export class ForestHorrorGame {
     if (move.lengthSq() > 0) {
       move.normalize();
       const wantsSprint = !!(this.keys["ShiftLeft"] || this.keys["ShiftRight"]);
-      sprintActive = wantsSprint && this.stamina > 5;
-      const sprintMul = sprintActive ? 1.7 : 1.0;
-      this.pos.addScaledVector(move, 4 * sprintMul * dt);
+      // Can't sprint while ADS or crouched
+      sprintActive = wantsSprint && this.stamina > 5 && !this.adsing && !this.crouching;
+      let speedMul = sprintActive ? 1.7 : 1.0;
+      if (this.adsing) speedMul *= 0.45;
+      if (this.crouching) speedMul *= 0.55;
+      this.pos.addScaledVector(move, 4 * speedMul * dt);
       this.footstepCd -= dt;
       if (this.footstepCd <= 0) {
         this.sound.footstep();
-        this.footstepCd = sprintActive ? 0.3 : 0.45;
+        this.footstepCd = sprintActive ? 0.3 : this.crouching ? 0.7 : 0.45;
       }
     }
+
     this.sprinting = sprintActive;
     // Stamina drain / regen
     if (sprintActive) {
