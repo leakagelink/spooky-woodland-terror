@@ -73,7 +73,7 @@ export class ForestHorrorGame {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x05070a);
-    this.fog = new THREE.FogExp2(0x05080a, 0.07);
+    this.fog = new THREE.FogExp2(0x0a1015, 0.025);
     this.scene.fog = this.fog;
 
     this.camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 200);
