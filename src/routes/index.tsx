@@ -169,7 +169,7 @@ function Game() {
       clearTimeout(msgTimer); clearTimeout(bloodTimer); clearTimeout(lightTimer);
       gameInstance?.dispose(); gameRef.current = null;
     };
-  }, [started]);
+  }, [started, difficulty]);
 
   const handleMove = useCallback((x: number, y: number) => {
     gameRef.current?.setMoveInput(x, y);
