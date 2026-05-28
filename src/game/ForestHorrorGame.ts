@@ -100,6 +100,10 @@ export class ForestHorrorGame {
   private giantEntTemplate: THREE.Group | null = null;
   private giantEntAnimations: THREE.AnimationClip[] = [];
   private giantSpawned = false;
+  // Fallen angel boss (12x normal zombie)
+  private fallenAngelTemplate: THREE.Group | null = null;
+  private fallenAngelAnimations: THREE.AnimationClip[] = [];
+  private angelSpawned = false;
 
   constructor(container: HTMLElement, cb: GameCallbacks) {
     this.container = container;
