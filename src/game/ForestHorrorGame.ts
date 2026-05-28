@@ -801,7 +801,58 @@ export class ForestHorrorGame {
     this.knifeMesh.position.set(0.15, -0.18, -0.4);
     this.knifeMesh.visible = false;
     this.camera.add(this.knifeMesh);
+
+    // ===== Shotgun — short pump-action, double barrel =====
+    this.shotgunMesh = new THREE.Group();
+    const sgMetal = new THREE.MeshStandardMaterial({ color: 0x1a1a20, metalness: 0.8, roughness: 0.4 });
+    const sgWood = new THREE.MeshStandardMaterial({ color: 0x4a2810, metalness: 0.1, roughness: 0.85 });
+    const sgDark = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, metalness: 0.3, roughness: 0.7 });
+    const sgAdd = (geo: THREE.BufferGeometry, mat: THREE.Material, p: [number, number, number], r: [number, number, number] = [0, 0, 0]) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(...p); m.rotation.set(...r);
+      this.shotgunMesh.add(m); return m;
+    };
+    sgAdd(new THREE.BoxGeometry(0.16, 0.1, 0.3), sgMetal, [0, 0, -0.12]); // receiver
+    sgAdd(new THREE.CylinderGeometry(0.035, 0.035, 0.6, 14), sgMetal, [-0.04, 0.08, -0.5], [Math.PI / 2, 0, 0]); // barrel L
+    sgAdd(new THREE.CylinderGeometry(0.035, 0.035, 0.6, 14), sgMetal, [0.04, 0.08, -0.5], [Math.PI / 2, 0, 0]); // barrel R
+    sgAdd(new THREE.BoxGeometry(0.16, 0.05, 0.35), sgWood, [0, -0.04, -0.5]); // forend
+    sgAdd(new THREE.BoxGeometry(0.08, 0.22, 0.1), sgWood, [0, -0.18, 0.05], [-0.25, 0, 0]); // grip
+    sgAdd(new THREE.BoxGeometry(0.1, 0.13, 0.32), sgWood, [0, -0.05, 0.22], [0.12, 0, 0]); // stock
+    sgAdd(new THREE.BoxGeometry(0.04, 0.05, 0.04), sgDark, [0, 0.13, -0.78]); // bead sight
+    this.shotgunMesh.position.set(0.13, -0.18, -0.4);
+    this.shotgunMesh.rotation.set(-0.02, -0.08, 0.02);
+    this.shotgunMesh.visible = false;
+    this.camera.add(this.shotgunMesh);
+
+    // ===== Sniper — long bolt-action with scope =====
+    this.sniperMesh = new THREE.Group();
+    const snMetal = new THREE.MeshStandardMaterial({ color: 0x12141a, metalness: 0.9, roughness: 0.3 });
+    const snStock = new THREE.MeshStandardMaterial({ color: 0x2a3025, metalness: 0.1, roughness: 0.9 });
+    const snScope = new THREE.MeshStandardMaterial({ color: 0x050608, metalness: 0.6, roughness: 0.4 });
+    const snLens = new THREE.MeshStandardMaterial({ color: 0x223344, metalness: 0.9, roughness: 0.1, emissive: 0x112233, emissiveIntensity: 0.3 });
+    const snAdd = (geo: THREE.BufferGeometry, mat: THREE.Material, p: [number, number, number], r: [number, number, number] = [0, 0, 0]) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(...p); m.rotation.set(...r);
+      this.sniperMesh.add(m); return m;
+    };
+    snAdd(new THREE.BoxGeometry(0.14, 0.1, 0.5), snMetal, [0, -0.02, -0.15]); // receiver
+    snAdd(new THREE.CylinderGeometry(0.022, 0.022, 1.0, 14), snMetal, [0, 0.05, -0.8], [Math.PI / 2, 0, 0]); // long barrel
+    snAdd(new THREE.CylinderGeometry(0.035, 0.035, 0.14, 14), snMetal, [0, 0.05, -1.28], [Math.PI / 2, 0, 0]); // muzzle brake
+    snAdd(new THREE.BoxGeometry(0.13, 0.09, 0.45), snStock, [0, -0.08, 0.25]); // stock
+    snAdd(new THREE.BoxGeometry(0.08, 0.2, 0.1), snStock, [0, -0.2, 0.0], [-0.2, 0, 0]); // grip
+    // Scope
+    snAdd(new THREE.CylinderGeometry(0.05, 0.05, 0.35, 16), snScope, [0, 0.18, -0.15], [Math.PI / 2, 0, 0]);
+    snAdd(new THREE.CylinderGeometry(0.07, 0.07, 0.08, 16), snScope, [0, 0.18, -0.32], [Math.PI / 2, 0, 0]);
+    snAdd(new THREE.CylinderGeometry(0.06, 0.06, 0.08, 16), snScope, [0, 0.18, 0.02], [Math.PI / 2, 0, 0]);
+    snAdd(new THREE.CircleGeometry(0.05, 16), snLens, [0, 0.18, 0.06]);
+    snAdd(new THREE.BoxGeometry(0.03, 0.1, 0.03), snScope, [0, 0.13, -0.15]); // scope mount
+    snAdd(new THREE.BoxGeometry(0.06, 0.04, 0.18), snMetal, [0, -0.08, -0.05]); // mag
+    this.sniperMesh.position.set(0.13, -0.18, -0.35);
+    this.sniperMesh.rotation.set(-0.02, -0.08, 0.02);
+    this.sniperMesh.visible = false;
+    this.camera.add(this.sniperMesh);
   }
+
 
   private spawnEnemy() {
     if (!this.zombieTemplate) return;
