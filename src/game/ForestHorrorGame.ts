@@ -1335,15 +1335,27 @@ export class ForestHorrorGame {
     }
   }
 
+  public cycleGrenade() {
+    const order: GrenadeKind[] = ["frag", "smoke", "incendiary"];
+    const idx = order.indexOf(this.grenadeKind);
+    this.grenadeKind = order[(idx + 1) % order.length];
+    this.cb.onMessage(`Grenade: ${this.grenadeKind.toUpperCase()}`);
+  }
+
+  public getGrenadeKind() { return this.grenadeKind; }
+
   public throwGrenade() {
     if (this.grenadeCount <= 0) {
       this.cb.onMessage("No grenades!");
       return;
     }
     this.grenadeCount--;
+    const kind = this.grenadeKind;
+    const color = kind === "frag" ? 0x2a3a1c : kind === "smoke" ? 0x666677 : 0xaa3311;
+    const emissive = kind === "frag" ? 0x110000 : kind === "smoke" ? 0x222233 : 0x441100;
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.12, 12, 10),
-      new THREE.MeshStandardMaterial({ color: 0x2a3a1c, roughness: 0.6, metalness: 0.4, emissive: 0x110000, emissiveIntensity: 0.4 }),
+      new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.4, emissive, emissiveIntensity: 0.5 }),
     );
     mesh.castShadow = true;
     const origin = this.camera.getWorldPosition(new THREE.Vector3());
@@ -1351,21 +1363,19 @@ export class ForestHorrorGame {
     mesh.position.copy(origin).addScaledVector(dir, 0.5);
     const vel = dir.clone().multiplyScalar(18).add(new THREE.Vector3(0, 4, 0));
     this.scene.add(mesh);
-    this.grenades.push({ mesh, vel, t: 2.2 });
+    this.grenades.push({ mesh, vel, t: 2.2, kind });
     this.sound.init();
-    this.cb.onMessage(`Grenade thrown! (${this.grenadeCount} left)`);
+    this.cb.onMessage(`${kind.toUpperCase()} thrown! (${this.grenadeCount} left)`);
   }
 
   private updateGrenades(dt: number) {
     for (const g of this.grenades) {
       if (g.t <= 0) continue;
       g.t -= dt;
-      // Physics
       g.vel.y -= 16 * dt;
       g.mesh.position.addScaledVector(g.vel, dt);
       g.mesh.rotation.x += dt * 6;
       g.mesh.rotation.z += dt * 4;
-      // Floor bounce
       if (g.mesh.position.y < 0.15) {
         g.mesh.position.y = 0.15;
         g.vel.y *= -0.4;
@@ -1375,70 +1385,127 @@ export class ForestHorrorGame {
       if (g.t <= 0) this.explodeGrenade(g);
     }
     this.grenades = this.grenades.filter((g) => g.t > 0);
+
+    // Burn zones — DOT to enemies inside
+    for (const bz of this.burnZones) {
+      bz.t -= dt;
+      const m = bz.ringMat as THREE.MeshBasicMaterial;
+      m.opacity = Math.max(0, Math.min(0.7, bz.t * 0.25));
+      bz.mesh.rotation.z += dt * 0.6;
+      for (const e of this.enemies) {
+        if (!e.alive) continue;
+        const d = e.mesh.position.distanceTo(bz.pos);
+        if (d < bz.radius) {
+          e.hp -= 35 * dt;
+          e.burnT = 0.8;
+          if (e.hp <= 0) this.killEnemy(e);
+        }
+      }
+      // Player burn too
+      const pd = this.pos.distanceTo(bz.pos);
+      if (pd < bz.radius) {
+        this.hp = Math.max(0, this.hp - 8 * dt);
+        this.cb.onHealth(this.hp);
+        if (this.hp <= 0) { this.cb.onDeath(); this.running = false; }
+      }
+    }
+    this.burnZones = this.burnZones.filter((b) => {
+      if (b.t <= 0) { this.scene.remove(b.mesh); return false; }
+      return true;
+    });
   }
 
-  private explodeGrenade(g: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number }) {
+  private explodeGrenade(g: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number; kind: GrenadeKind }) {
     const pos = g.mesh.position.clone();
     this.scene.remove(g.mesh);
     g.t = -1;
-    this.sound.thunder();
 
-    // Bright flash light
-    const flash = new THREE.PointLight(0xffaa44, 30, 25, 2);
-    flash.position.copy(pos);
-    this.scene.add(flash);
-    let life = 0.3;
-    const fade = () => {
-      life -= 0.05;
-      flash.intensity = Math.max(0, life * 100);
-      if (life > 0) setTimeout(fade, 30);
-      else this.scene.remove(flash);
-    };
-    fade();
-
-    // Smoke/debris ring
-    const ringGeo = new THREE.RingGeometry(0.3, 0.5, 24);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffaa55, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.position.copy(pos);
-    ring.rotation.x = -Math.PI / 2;
-    this.scene.add(ring);
-    let rs = 1;
-    const grow = () => {
-      rs += 0.6;
-      ring.scale.setScalar(rs);
-      ringMat.opacity *= 0.85;
-      if (ringMat.opacity > 0.05) setTimeout(grow, 30);
-      else this.scene.remove(ring);
-    };
-    grow();
-
-    // Damage all enemies in radius
-    const radius = 6;
-    const baseDmg = 200;
-    for (const e of this.enemies) {
-      if (!e.alive) continue;
-      const d = e.mesh.position.distanceTo(pos);
-      if (d > radius) continue;
-      const falloff = 1 - d / radius;
-      const dmg = baseDmg * falloff;
-      e.hp -= dmg;
-      e.hitFlash = 0.2;
-      if (e.hp <= 0) this.killEnemy(e);
+    if (g.kind === "frag") {
+      this.sound.thunder();
+      const flash = new THREE.PointLight(0xffaa44, 30, 25, 2);
+      flash.position.copy(pos);
+      this.scene.add(flash);
+      let life = 0.3;
+      const fade = () => {
+        life -= 0.05;
+        flash.intensity = Math.max(0, life * 100);
+        if (life > 0) setTimeout(fade, 30);
+        else this.scene.remove(flash);
+      };
+      fade();
+      const ringGeo = new THREE.RingGeometry(0.3, 0.5, 24);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xffaa55, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.position.copy(pos); ring.rotation.x = -Math.PI / 2;
+      this.scene.add(ring);
+      let rs = 1;
+      const grow = () => {
+        rs += 0.6; ring.scale.setScalar(rs); ringMat.opacity *= 0.85;
+        if (ringMat.opacity > 0.05) setTimeout(grow, 30);
+        else this.scene.remove(ring);
+      };
+      grow();
+      const radius = 6, baseDmg = 200;
+      for (const e of this.enemies) {
+        if (!e.alive) continue;
+        const d = e.mesh.position.distanceTo(pos);
+        if (d > radius) continue;
+        const dmg = baseDmg * (1 - d / radius);
+        e.hp -= dmg; e.hitFlash = 0.2;
+        if (e.hp <= 0) this.killEnemy(e);
+      }
+      const pd = pos.distanceTo(this.pos);
+      if (pd < radius) {
+        const selfDmg = (1 - pd / radius) * 80;
+        this.hp = Math.max(0, this.hp - selfDmg);
+        this.cb.onHealth(this.hp); this.cb.onDamage();
+        if (this.hp <= 0) { this.cb.onDeath(); this.running = false; }
+      }
+      this.shake = Math.max(this.shake, Math.min(1.2, 1.2 * (1 - pd / 30)));
+    } else if (g.kind === "smoke") {
+      // Persistent smoke cloud: slows + blinds enemies in radius for 6s
+      const radius = 7;
+      const cloud = new THREE.Mesh(
+        new THREE.SphereGeometry(radius, 16, 12),
+        new THREE.MeshBasicMaterial({ color: 0xbbbbcc, transparent: true, opacity: 0.45, depthWrite: false }),
+      );
+      cloud.position.copy(pos); cloud.position.y = 1.5;
+      this.scene.add(cloud);
+      let life = 6;
+      const mat = cloud.material as THREE.MeshBasicMaterial;
+      const tick = () => {
+        life -= 0.1;
+        cloud.scale.setScalar(1 + (6 - life) * 0.05);
+        mat.opacity = Math.max(0, Math.min(0.55, life * 0.1));
+        // slow enemies inside
+        for (const e of this.enemies) {
+          if (!e.alive) continue;
+          if (e.mesh.position.distanceTo(pos) < radius) e.slowT = 0.4;
+        }
+        if (life > 0) setTimeout(tick, 100);
+        else this.scene.remove(cloud);
+      };
+      tick();
+      this.cb.onMessage("Smoke deployed!");
+    } else {
+      // incendiary: burn zone
+      this.sound.thunder();
+      const radius = 4.5;
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xff5522, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false });
+      const ring = new THREE.Mesh(new THREE.CircleGeometry(radius, 32), ringMat);
+      ring.position.copy(pos); ring.position.y = 0.05; ring.rotation.x = -Math.PI / 2;
+      this.scene.add(ring);
+      this.burnZones.push({ mesh: ring, pos: pos.clone(), t: 5, radius, ringMat });
+      const flash = new THREE.PointLight(0xff5522, 12, 18, 2);
+      flash.position.copy(pos); flash.position.y = 1;
+      this.scene.add(flash);
+      setTimeout(() => this.scene.remove(flash), 5000);
+      this.cb.onMessage("Fire spreads!");
     }
-    // Player damage if too close
-    const pd = pos.distanceTo(this.pos);
-    if (pd < radius) {
-      const selfDmg = (1 - pd / radius) * 80;
-      this.hp = Math.max(0, this.hp - selfDmg);
-      this.cb.onHealth(this.hp);
-      this.cb.onDamage();
-      if (this.hp <= 0) { this.cb.onDeath(); this.running = false; }
-    }
-    this.shake = Math.max(this.shake, Math.min(1.2, 1.2 * (1 - pd / 30)));
   }
 
   public getGrenades() { return this.grenadeCount; }
+
 
 
 
