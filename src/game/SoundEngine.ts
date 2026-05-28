@@ -6,6 +6,31 @@ export class SoundEngine {
   private rainGain: GainNode | null = null;
   private ambientGain: GainNode | null = null;
 
+  /**
+   * Build a positional gain+panner chain for distance attenuation + stereo pan.
+   * dx/dz are offsets in world space from the listener (player), with -z forward.
+   * Returns the destination node a sound source should connect to.
+   */
+  private positional(dx: number, dz: number, maxDist = 30): AudioNode | null {
+    if (!this.ctx || !this.master) return null;
+    const dist = Math.hypot(dx, dz);
+    // Stereo pan: dx negative = left, positive = right (clamped)
+    const pan = Math.max(-1, Math.min(1, dx / Math.max(8, dist)));
+    // Distance attenuation
+    const atten = Math.max(0, 1 - dist / maxDist);
+    const panner = this.ctx.createStereoPanner();
+    panner.pan.value = pan;
+    const distGain = this.ctx.createGain();
+    distGain.gain.value = atten * atten; // quadratic falloff
+    // Distant sounds also lose highs
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 400 + (1 - dist / maxDist) * 4000;
+    lp.connect(panner).connect(distGain).connect(this.master);
+    return lp;
+  }
+
+
   init() {
     if (this.ctx) return;
     const Ctx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
@@ -144,7 +169,7 @@ export class SoundEngine {
     osc.stop(now + 0.31);
   }
 
-  zombieGrowl() {
+  zombieGrowl(dx = 0, dz = 0) {
     if (!this.ctx || !this.master) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
@@ -163,12 +188,14 @@ export class SoundEngine {
     g.gain.setValueAtTime(0.001, now);
     g.gain.exponentialRampToValueAtTime(0.3, now + 0.05);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-    osc.connect(filter).connect(g).connect(this.master);
+    const dest = (dx !== 0 || dz !== 0) ? this.positional(dx, dz, 35) : this.master;
+    if (!dest) return;
+    osc.connect(filter).connect(g).connect(dest);
     osc.start(now); lfo.start(now);
     osc.stop(now + 0.61); lfo.stop(now + 0.61);
   }
 
-  ghostWhisper() {
+  ghostWhisper(dx = 0, dz = 0) {
     if (!this.ctx || !this.master) return;
     const now = this.ctx.currentTime;
     const dur = 1.2;
@@ -185,9 +212,12 @@ export class SoundEngine {
     g.gain.setValueAtTime(0.001, now);
     g.gain.linearRampToValueAtTime(0.15, now + 0.3);
     g.gain.linearRampToValueAtTime(0.001, now + dur);
-    src.connect(bp).connect(g).connect(this.master);
+    const dest = (dx !== 0 || dz !== 0) ? this.positional(dx, dz, 40) : this.master;
+    if (!dest) return;
+    src.connect(bp).connect(g).connect(dest);
     src.start(now);
   }
+
 
   thunder() {
     if (!this.ctx || !this.master) return;

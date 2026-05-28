@@ -2,6 +2,10 @@ import * as THREE from "three";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { SoundEngine } from "./SoundEngine";
 
 export type GameCallbacks = {
@@ -105,6 +109,16 @@ export class ForestHorrorGame {
   private fallenAngelAnimations: THREE.AnimationClip[] = [];
   private angelSpawned = false;
 
+  // Post-processing
+  private composer!: EffectComposer;
+  private bloomPass!: UnrealBloomPass;
+  private grainPass!: ShaderPass;
+
+  // Reload state
+  private reloading = 0; // seconds remaining; 0 = not reloading
+  private readonly reloadDuration = 1.6;
+  private magMesh!: THREE.Mesh;
+
   constructor(container: HTMLElement, cb: GameCallbacks) {
     this.container = container;
     this.cb = cb;
@@ -115,9 +129,10 @@ export class ForestHorrorGame {
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
-    this.renderer.shadowMap.enabled = false;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
@@ -136,6 +151,7 @@ export class ForestHorrorGame {
     this.buildWorld();
     this.buildPlayerWeapons();
     this.bindInput();
+    this.setupPostProcessing();
     this.loadZombieModel();
     this.loadGiantEntModel();
     this.loadFallenAngelModel();
@@ -348,9 +364,19 @@ export class ForestHorrorGame {
     this.ambient = new THREE.AmbientLight(0x4a5a70, 1.1);
     this.scene.add(this.ambient);
 
-    // Moonlight
+    // Moonlight — primary shadow caster
     const moon = new THREE.DirectionalLight(0x8aa6cc, 0.9);
     moon.position.set(20, 40, 10);
+    moon.castShadow = true;
+    moon.shadow.mapSize.set(1024, 1024);
+    moon.shadow.camera.near = 1;
+    moon.shadow.camera.far = 120;
+    moon.shadow.camera.left = -60;
+    moon.shadow.camera.right = 60;
+    moon.shadow.camera.top = 60;
+    moon.shadow.camera.bottom = -60;
+    moon.shadow.bias = -0.0008;
+    moon.shadow.normalBias = 0.04;
     this.scene.add(moon);
 
     // Hemisphere for sky/ground tint
@@ -387,6 +413,7 @@ export class ForestHorrorGame {
     });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
     this.scene.add(ground);
 
     // Grass blade patches scattered around
@@ -441,6 +468,8 @@ export class ForestHorrorGame {
       const tree = new THREE.Group();
       const trunk = new THREE.Mesh(trunkGeo, trunkMat);
       trunk.position.y = 3.5;
+      trunk.castShadow = true;
+      trunk.receiveShadow = true;
       tree.add(trunk);
       // Multi-cluster canopy for fuller look
       for (let j = 0; j < 3; j++) {
@@ -594,6 +623,14 @@ export class ForestHorrorGame {
     boxPart([0.05, 0.055, 0.03], [0, 0.16, -0.55], wornEdge);
     boxPart([0.05, 0.06, 0.035], [0, 0.15, -0.82], wornEdge);
     boxPart([0.025, 0.035, 0.08], [0.105, 0.03, -0.05], brass);
+
+    // Detachable magazine — animated during reload
+    this.magMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.11, 0.22, 0.09),
+      blackPolymer,
+    );
+    this.magMesh.position.set(0, -0.18, -0.08);
+    this.gunMesh.add(this.magMesh);
 
     this.gunMesh.position.set(0.13, -0.18, -0.4);
     this.gunMesh.rotation.set(-0.02, -0.08, 0.02);
@@ -910,11 +947,13 @@ export class ForestHorrorGame {
   }
   public reload() {
     if (this.weapon !== "gun") return;
+    if (this.reloading > 0) return;
+    if (this.ammo >= 24) return;
     this.sound.init();
     this.sound.reload();
-    this.ammo = 24;
-    this.cb.onAmmo(this.ammo, this.weapon);
-    this.cb.onMessage("Reloaded");
+    this.reloading = this.reloadDuration;
+    this.cb.onMessage("Reloading...");
+    // Refill ammo at end of animation (handled in updatePlayer)
   }
   public attack() {
     this.sound.init();
@@ -923,6 +962,7 @@ export class ForestHorrorGame {
 
   private tryAttack() {
     if (this.fireCd > 0) return;
+    if (this.reloading > 0) return;
     if (this.weapon === "gun") {
       if (this.ammo <= 0) {
         this.cb.onMessage("Out of ammo! Press R");
@@ -946,26 +986,42 @@ export class ForestHorrorGame {
     const origin = this.camera.getWorldPosition(new THREE.Vector3());
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
     const ray = new THREE.Raycaster(origin, dir, 0, maxDist);
-    let closest: { e: Enemy; d: number } | null = null;
+    let closest: { e: Enemy; d: number; hitPoint: THREE.Vector3; bone: string } | null = null;
     for (const e of this.enemies) {
       if (!e.alive) continue;
       const hits = ray.intersectObject(e.mesh, true);
       if (hits.length && (!closest || hits[0].distance < closest.d)) {
-        closest = { e, d: hits[0].distance };
+        const h = hits[0];
+        const boneName = (h.object.name || "").toLowerCase();
+        closest = { e, d: h.distance, hitPoint: h.point.clone(), bone: boneName };
       }
     }
     if (closest) {
-      closest.e.hp -= damage;
+      // Headshot detection — by bone name OR by Y position near top of enemy bbox
+      const bbox = new THREE.Box3().setFromObject(closest.e.mesh);
+      const headThreshold = bbox.min.y + (bbox.max.y - bbox.min.y) * 0.78;
+      const isHeadByName = /head|skull|neck|cranium/.test(closest.bone);
+      const isHeadByPos = closest.hitPoint.y >= headThreshold;
+      const isHeadshot = isHeadByName || isHeadByPos;
+      const finalDamage = isHeadshot ? damage * 3 : damage;
+
+      closest.e.hp -= finalDamage;
       closest.e.hitFlash = 0.15;
-      // Tint red
-      const redMat = new THREE.MeshBasicMaterial({ color: 0xff3030 });
+      const redMat = new THREE.MeshBasicMaterial({
+        color: isHeadshot ? 0xff0000 : 0xff3030,
+      });
       closest.e.origMats.forEach((_, m) => {
         m.material = redMat;
       });
-      if (closest.e.hp <= 0) this.killEnemy(closest.e);
-      else this.cb.onMessage("Hit!");
+      if (closest.e.hp <= 0) {
+        this.killEnemy(closest.e);
+        if (isHeadshot) this.cb.onMessage("💥 HEADSHOT KILL!");
+      } else {
+        this.cb.onMessage(isHeadshot ? "💥 HEADSHOT! (3x)" : "Hit!");
+      }
     }
   }
+
 
   private killEnemy(e: Enemy) {
     e.alive = false;
@@ -1039,7 +1095,41 @@ export class ForestHorrorGame {
       gunBaseRotY = -0.08,
       gunBaseRotZ = 0.02;
 
-    if (this.muzzleFlash > 0) {
+    // Reload animation drives gun pose when active
+    if (this.reloading > 0) {
+      this.reloading -= dt;
+      const p = 1 - this.reloading / this.reloadDuration; // 0 -> 1
+      // Down/tilt during first half, return during second half
+      const dip = Math.sin(p * Math.PI); // 0 -> 1 -> 0
+      this.gunMesh.position.set(baseX, baseY - dip * 0.18, baseZ + dip * 0.05);
+      this.gunMesh.rotation.set(
+        gunBaseRotX + dip * 0.6,
+        gunBaseRotY - dip * 0.3,
+        gunBaseRotZ - dip * 0.15,
+      );
+      // Magazine drops out in first 40%, snaps back in last 30%
+      if (p < 0.4) {
+        const mp = p / 0.4;
+        this.magMesh.position.y = -0.18 - mp * 0.5;
+        this.magMesh.rotation.x = mp * 0.5;
+      } else if (p > 0.7) {
+        const mp = (p - 0.7) / 0.3;
+        this.magMesh.position.y = -0.18 - (1 - mp) * 0.3;
+        this.magMesh.rotation.x = (1 - mp) * 0.3;
+      } else {
+        this.magMesh.position.y = -0.68;
+        this.magMesh.rotation.x = 0.5;
+      }
+      if (this.reloading <= 0) {
+        this.reloading = 0;
+        this.ammo = 24;
+        this.cb.onAmmo(this.ammo, this.weapon);
+        this.cb.onMessage("Reloaded");
+        this.magMesh.position.set(0, -0.18, -0.08);
+        this.magMesh.rotation.set(0, 0, 0);
+      }
+      this.muzzleLight.intensity = 0;
+    } else if (this.muzzleFlash > 0) {
       this.muzzleLight.intensity = 12;
       this.muzzleFlash -= dt;
       const kick = this.muzzleFlash / 0.08; // 1 -> 0
@@ -1123,11 +1213,21 @@ export class ForestHorrorGame {
         }
       }
 
-      // Periodic growl/whisper if close enough
-      if (dist < 18 && t - e.lastGrowl > 3 + Math.random() * 4) {
+      // Periodic growl/whisper — positional 3D audio relative to player facing
+      if (dist < 22 && t - e.lastGrowl > 3 + Math.random() * 4) {
         e.lastGrowl = t;
-        if (e.type === "zombie") this.sound.zombieGrowl();
-        else this.sound.ghostWhisper();
+        // Convert world offset → player-local (yaw-rotated) so left/right pan matches view
+        const wx = e.mesh.position.x - this.pos.x;
+        const wz = e.mesh.position.z - this.pos.z;
+        const cosY = Math.cos(-this.yaw);
+        const sinY = Math.sin(-this.yaw);
+        const lx = wx * cosY - wz * sinY;
+        const lz = wx * sinY + wz * cosY;
+        if (e.type === "zombie" || e.type === "giant_ent" || e.type === "fallen_angel") {
+          this.sound.zombieGrowl(lx, lz);
+        } else {
+          this.sound.ghostWhisper(lx, lz);
+        }
       }
 
       e.attackCd -= dt;
@@ -1165,7 +1265,72 @@ export class ForestHorrorGame {
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    if (this.composer) this.composer.setSize(w, h);
+    if (this.bloomPass) this.bloomPass.setSize(w, h);
   };
+
+  private setupPostProcessing() {
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.setSize(w, h);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+    // Bloom — for muzzle flash, lightning, boss glows
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.7, 0.85);
+    this.composer.addPass(this.bloomPass);
+
+    // Vignette + film grain + chromatic aberration in a single fragment shader
+    const grainShader = {
+      uniforms: {
+        tDiffuse: { value: null as THREE.Texture | null },
+        uTime: { value: 0 },
+        uVignette: { value: 1.1 },
+        uGrain: { value: 0.06 },
+        uDamage: { value: 0 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float uTime;
+        uniform float uVignette;
+        uniform float uGrain;
+        uniform float uDamage;
+        varying vec2 vUv;
+        float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
+        void main(){
+          vec2 uv = vUv;
+          // Chromatic aberration — slight RGB split at edges
+          float ca = 0.002 + uDamage * 0.006;
+          vec2 dir = uv - 0.5;
+          vec4 col;
+          col.r = texture2D(tDiffuse, uv + dir * ca).r;
+          col.g = texture2D(tDiffuse, uv).g;
+          col.b = texture2D(tDiffuse, uv - dir * ca).b;
+          col.a = 1.0;
+          // Vignette
+          float d = distance(uv, vec2(0.5));
+          float v = smoothstep(0.85, 0.25, d * uVignette);
+          col.rgb *= mix(0.25, 1.0, v);
+          // Damage red overlay
+          col.rgb = mix(col.rgb, vec3(0.6, 0.0, 0.0), uDamage * (1.0 - v) * 0.7);
+          // Film grain
+          float g = (rand(uv * (1.0 + uTime)) - 0.5) * uGrain;
+          col.rgb += g;
+          gl_FragColor = col;
+        }
+      `,
+    };
+    this.grainPass = new ShaderPass(grainShader);
+    this.composer.addPass(this.grainPass);
+  }
+
 
   private updateWeather(dt: number) {
     // Rain falls
@@ -1198,7 +1363,7 @@ export class ForestHorrorGame {
 
   private loop = () => {
     if (!this.running) {
-      this.renderer.render(this.scene, this.camera);
+      this.composer.render();
       return;
     }
     this.raf = requestAnimationFrame(this.loop);
@@ -1211,11 +1376,9 @@ export class ForestHorrorGame {
       this.spawnTimer = 4.5;
     }
 
-    // Boss: spawn giant ent after 5 kills, only one at a time
     if (!this.giantSpawned && this.kills >= 5 && this.giantEntTemplate) {
       this.spawnGiantEnt();
     }
-    // Boss: spawn fallen angel after 12 kills (12x powerful)
     if (!this.angelSpawned && this.kills >= 12 && this.fallenAngelTemplate) {
       this.spawnFallenAngel();
     }
@@ -1223,8 +1386,25 @@ export class ForestHorrorGame {
     this.updatePlayer(dt);
     this.updateEnemies(dt);
     this.updateWeather(dt);
-    this.renderer.render(this.scene, this.camera);
+
+    // Post-processing uniforms — damage flash + grain animation
+    if (this.grainPass) {
+      const u = this.grainPass.uniforms;
+      u.uTime.value = this.clock.getElapsedTime();
+      // Damage overlay scales with missing HP
+      const dmgT = Math.max(0, 1 - this.hp / 100);
+      u.uDamage.value = THREE.MathUtils.lerp(u.uDamage.value as number, dmgT * 0.6, 0.1);
+    }
+    if (this.bloomPass) {
+      // Pulse bloom on muzzle/lightning
+      const boost = this.muzzleFlash > 0 ? 0.4 : 0;
+      const ltn = this.lightningFlash > 0 ? this.lightningFlash * 0.6 : 0;
+      this.bloomPass.strength = 0.55 + boost + ltn;
+    }
+
+    this.composer.render();
   };
+
 
   public dispose() {
     this.running = false;
