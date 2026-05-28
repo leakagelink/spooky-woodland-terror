@@ -654,6 +654,50 @@ export class ForestHorrorGame {
     this.gunMesh.rotation.set(-0.02, -0.08, 0.02);
     this.camera.add(this.gunMesh);
 
+    // Try to load the user-provided SCAR rifle. On success, replace the
+    // procedural geometry with the real model (keeps mag for reload anim).
+    const gunLoader = new FBXLoader();
+    gunLoader.load(
+      "/models/weapons/scar.fbx",
+      (fbx) => {
+        const texLoader = new THREE.TextureLoader();
+        const gunTex = texLoader.load("/models/weapons/gun_texture.png");
+        gunTex.colorSpace = THREE.SRGBColorSpace;
+        gunTex.flipY = false;
+
+        fbx.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) {
+            m.material = new THREE.MeshStandardMaterial({
+              map: gunTex,
+              color: 0xffffff,
+              metalness: 0.75,
+              roughness: 0.4,
+            });
+            m.castShadow = false;
+          }
+        });
+
+        // Normalize size to ~0.55 units long along Z
+        const box = new THREE.Box3().setFromObject(fbx);
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        const s = 0.55 / maxDim;
+        fbx.scale.setScalar(s);
+        fbx.rotation.set(0, Math.PI, 0);
+        fbx.position.set(0, 0, 0);
+
+        // Remove procedural parts but keep the magazine for reload animation
+        const toRemove = this.gunMesh.children.filter((c) => c !== this.magMesh);
+        toRemove.forEach((c) => this.gunMesh.remove(c));
+        this.gunMesh.add(fbx);
+      },
+      undefined,
+      (err) => {
+        console.warn("SCAR FBX failed to load, keeping procedural gun", err);
+      },
+    );
+
     // Knife
     this.knifeMesh = new THREE.Group();
     const blade = new THREE.Mesh(
