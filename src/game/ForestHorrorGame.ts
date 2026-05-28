@@ -469,23 +469,38 @@ export class ForestHorrorGame {
     this.camera.position.copy(this.pos);
 
     if (this.fireCd > 0) this.fireCd -= dt;
+
+    const t = this.clock.getElapsedTime();
+    const sway = move.lengthSq() > 0 ? 0.012 : 0.004;
+    const baseX = 0.13, baseY = -0.18, baseZ = -0.4;
+
     if (this.muzzleFlash > 0) {
-      this.muzzleLight.intensity = 8;
+      this.muzzleLight.intensity = 12;
       this.muzzleFlash -= dt;
-      // recoil
-      this.gunMesh.position.z = -0.55 + Math.sin(this.muzzleFlash * 40) * 0.02;
+      const kick = this.muzzleFlash / 0.08; // 1 -> 0
+      this.gunMesh.position.set(baseX, baseY + kick * 0.04, baseZ + kick * 0.08);
+      this.gunMesh.rotation.x = kick * 0.3;
     } else {
       this.muzzleLight.intensity = 0;
-      this.gunMesh.position.z = -0.6;
+      this.gunMesh.rotation.x = 0;
+      this.gunMesh.position.x = baseX + Math.sin(t * 6) * sway;
+      this.gunMesh.position.y = baseY + Math.abs(Math.cos(t * 6)) * sway;
+      this.gunMesh.position.z = baseZ;
     }
 
-    // weapon sway
-    const t = this.clock.getElapsedTime();
-    const sway = move.lengthSq() > 0 ? 0.015 : 0.005;
-    this.gunMesh.position.x = 0.3 + Math.sin(t * 6) * sway;
-    this.gunMesh.position.y = -0.3 + Math.abs(Math.cos(t * 6)) * sway;
-    this.knifeMesh.position.x = 0.35 + Math.sin(t * 6) * sway;
-    this.knifeMesh.position.y = -0.3 + Math.abs(Math.cos(t * 6)) * sway;
+    // Knife slash animation when attacking
+    if (this.weapon === "knife" && this.fireCd > 0) {
+      const p = 1 - this.fireCd / 0.4; // 0 -> 1
+      const slash = Math.sin(p * Math.PI); // 0 -> 1 -> 0
+      this.knifeMesh.position.set(baseX - slash * 0.25, baseY + slash * 0.1, baseZ - slash * 0.15);
+      this.knifeMesh.rotation.z = slash * 1.2;
+      this.knifeMesh.rotation.y = -slash * 0.8;
+    } else {
+      this.knifeMesh.rotation.set(0, 0, 0);
+      this.knifeMesh.position.x = baseX + Math.sin(t * 6) * sway;
+      this.knifeMesh.position.y = baseY + Math.abs(Math.cos(t * 6)) * sway;
+      this.knifeMesh.position.z = baseZ;
+    }
   }
 
   private updateEnemies(dt: number) {
