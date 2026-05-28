@@ -627,6 +627,35 @@ export class ForestHorrorGame {
     this.camera.updateProjectionMatrix();
   };
 
+  private updateWeather(dt: number) {
+    // Rain falls
+    for (let i = 0; i < this.rainPositions.length; i += 3) {
+      this.rainPositions[i + 1] -= 30 * dt;
+      if (this.rainPositions[i + 1] < 0) {
+        this.rainPositions[i] = this.pos.x + (Math.random() - 0.5) * 60;
+        this.rainPositions[i + 1] = 22 + Math.random() * 5;
+        this.rainPositions[i + 2] = this.pos.z + (Math.random() - 0.5) * 60;
+      }
+    }
+    this.rain.geometry.attributes.position.needsUpdate = true;
+
+    // Lightning
+    this.lightningTimer -= dt;
+    if (this.lightningTimer <= 0) {
+      this.lightningTimer = 8 + Math.random() * 15;
+      this.lightningFlash = 0.4;
+      this.cb.onLightning();
+      setTimeout(() => this.sound.thunder(), 600 + Math.random() * 800);
+    }
+    if (this.lightningFlash > 0) {
+      this.lightningFlash -= dt;
+      const intensity = Math.max(0, this.lightningFlash) * 4;
+      this.ambient.intensity = 1.1 + intensity;
+    } else {
+      this.ambient.intensity = 1.1;
+    }
+  }
+
   private loop = () => {
     if (!this.running) { this.renderer.render(this.scene, this.camera); return; }
     this.raf = requestAnimationFrame(this.loop);
@@ -641,6 +670,7 @@ export class ForestHorrorGame {
 
     this.updatePlayer(dt);
     this.updateEnemies(dt);
+    this.updateWeather(dt);
     this.renderer.render(this.scene, this.camera);
   };
 
@@ -650,6 +680,7 @@ export class ForestHorrorGame {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("resize", this.onResize);
+    this.sound.dispose();
     this.renderer.dispose();
     this.container.removeChild(this.renderer.domElement);
   }
