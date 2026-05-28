@@ -473,6 +473,10 @@ export class ForestHorrorGame {
     }
     if (closest) {
       closest.e.hp -= damage;
+      closest.e.hitFlash = 0.15;
+      // Tint red
+      const redMat = new THREE.MeshBasicMaterial({ color: 0xff3030 });
+      closest.e.origMats.forEach((_, m) => { m.material = redMat; });
       if (closest.e.hp <= 0) this.killEnemy(closest.e);
       else this.cb.onMessage("Hit!");
     }
