@@ -16,7 +16,7 @@ export type GameCallbacks = {
 
 type Enemy = {
   mesh: THREE.Object3D;
-  type: "zombie" | "ghost";
+  type: "zombie" | "ghost" | "giant_ent";
   hp: number;
   speed: number;
   attackCd: number;
@@ -36,6 +36,9 @@ type Enemy = {
   phase: number;
   mixer?: THREE.AnimationMixer;
   isFbxModel?: boolean;
+  isGiant?: boolean;
+  attackRange?: number;
+  damage?: number;
 };
 
 export class ForestHorrorGame {
@@ -93,6 +96,10 @@ export class ForestHorrorGame {
   // FBX zombie model
   private zombieTemplate: THREE.Group | null = null;
   private zombieAnimations: THREE.AnimationClip[] = [];
+  // Giant ent (boss) model
+  private giantEntTemplate: THREE.Group | null = null;
+  private giantEntAnimations: THREE.AnimationClip[] = [];
+  private giantSpawned = false;
 
   constructor(container: HTMLElement, cb: GameCallbacks) {
     this.container = container;
@@ -126,6 +133,7 @@ export class ForestHorrorGame {
     this.buildPlayerWeapons();
     this.bindInput();
     this.loadZombieModel();
+    this.loadGiantEntModel();
     // Forest GLB uses spec-gloss extension (not supported) → renders white.
     // Skip it and rely on PBR-textured procedural trees in buildWorld().
     // this.loadForestAssets();
@@ -183,6 +191,50 @@ export class ForestHorrorGame {
       },
     );
   }
+
+  private loadGiantEntModel() {
+    const loader = new FBXLoader();
+    loader.load(
+      "/models/enemies/giant_ent.fbx",
+      (fbx) => {
+        const texLoader = new THREE.TextureLoader();
+        const tex = texLoader.load(
+          "/models/enemies/giant_ent.fbm/dunklerwaldent3d-modell_basecolor.JPEG",
+        );
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.flipY = false;
+
+        // Normalize to ~6m tall base (will scale further at spawn)
+        const box = new THREE.Box3().setFromObject(fbx);
+        const size = box.getSize(new THREE.Vector3());
+        const baseScale = 6.0 / (size.y || 1);
+        fbx.scale.setScalar(baseScale);
+
+        fbx.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) {
+            m.castShadow = true;
+            m.material = new THREE.MeshStandardMaterial({
+              map: tex,
+              color: 0x6b5a3a,
+              roughness: 0.95,
+              metalness: 0.0,
+              emissive: 0x1a0a02,
+              emissiveIntensity: 0.2,
+            });
+          }
+        });
+
+        this.giantEntTemplate = fbx;
+        this.giantEntAnimations = fbx.animations || [];
+      },
+      undefined,
+      (err) => {
+        console.warn("Failed to load giant ent FBX", err);
+      },
+    );
+  }
+
 
   private loadForestAssets() {
     const loader = new GLTFLoader();
@@ -582,6 +634,86 @@ export class ForestHorrorGame {
     });
   }
 
+  private spawnGiantEnt() {
+    if (!this.giantEntTemplate) return;
+    if (this.giantSpawned) return;
+
+    const enemy = new THREE.Group();
+    const model = SkeletonUtils.clone(this.giantEntTemplate) as THREE.Group;
+
+    // Make it tower over normal zombies
+    model.scale.multiplyScalar(1.4);
+
+    model.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh && m.material) {
+        const mat = (m.material as THREE.MeshStandardMaterial).clone();
+        // Dark corrupted bark tint
+        mat.color.setHex(0x4a3a22);
+        mat.emissive = new THREE.Color(0x331100);
+        mat.emissiveIntensity = 0.35;
+        m.material = mat;
+        m.castShadow = true;
+      }
+    });
+    enemy.add(model);
+
+    let mixer: THREE.AnimationMixer | undefined;
+    if (this.giantEntAnimations.length > 0) {
+      mixer = new THREE.AnimationMixer(model);
+      const action = mixer.clipAction(this.giantEntAnimations[0]);
+      action.timeScale = 0.6;
+      action.play();
+    }
+
+    // Spawn far from player
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 35 + Math.random() * 15;
+    enemy.position.set(
+      this.pos.x + Math.cos(angle) * dist,
+      0,
+      this.pos.z + Math.sin(angle) * dist,
+    );
+
+    // Ominous green glow around the giant
+    const glow = new THREE.PointLight(0x66ff66, 3, 18, 2);
+    glow.position.y = 4;
+    enemy.add(glow);
+
+    this.scene.add(enemy);
+
+    const origMats = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+    enemy.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) origMats.set(m, m.material);
+    });
+
+    this.enemies.push({
+      mesh: enemy,
+      type: "giant_ent",
+      hp: 600, // 10x normal zombie (60)
+      speed: 1.3, // slower but relentless
+      attackCd: 0,
+      alive: true,
+      hitFlash: 0,
+      origMats,
+      lastGrowl: 0,
+      phase: Math.random() * Math.PI * 2,
+      mixer,
+      isFbxModel: true,
+      isGiant: true,
+      attackRange: 4.5,
+      damage: 120, // 10x normal zombie (12)
+    });
+
+    this.giantSpawned = true;
+    this.cb.onMessage("⚠ A GIANT FOREST ENT AWAKENS ⚠");
+    this.sound.thunder();
+    this.shake = Math.max(this.shake, 0.6);
+  }
+
+
+
   private bindInput() {
     const canvas = this.renderer.domElement;
     canvas.style.touchAction = "none";
@@ -714,7 +846,13 @@ export class ForestHorrorGame {
     this.scene.remove(e.mesh);
     this.kills++;
     this.cb.onKills(this.kills);
-    this.cb.onMessage(e.type === "ghost" ? "Ghost banished!" : "Zombie down!");
+    if (e.type === "giant_ent") {
+      this.giantSpawned = false;
+      this.cb.onMessage("🏆 GIANT ENT SLAIN!");
+      this.shake = Math.max(this.shake, 0.8);
+    } else {
+      this.cb.onMessage(e.type === "ghost" ? "Ghost banished!" : "Zombie down!");
+    }
   }
 
   private updatePlayer(dt: number) {
@@ -863,15 +1001,22 @@ export class ForestHorrorGame {
       }
 
       e.attackCd -= dt;
-      if (dist < 1.6 && e.attackCd <= 0) {
-        e.attackCd = 1.2;
-        const dmg = e.type === "ghost" ? 8 : 12;
+      const range = e.attackRange ?? 1.6;
+      if (dist < range && e.attackCd <= 0) {
+        e.attackCd = e.isGiant ? 2.0 : 1.2;
+        const dmg = e.damage ?? (e.type === "ghost" ? 8 : 12);
         this.hp -= dmg;
-        this.shake = Math.max(this.shake, 0.4);
+        this.shake = Math.max(this.shake, e.isGiant ? 1.0 : 0.4);
         this.sound.hurt();
         this.cb.onHealth(Math.max(0, this.hp));
         this.cb.onDamage();
-        this.cb.onMessage(e.type === "ghost" ? "Ghost touched you!" : "Zombie bite!");
+        this.cb.onMessage(
+          e.isGiant
+            ? "GIANT ENT SMASH!"
+            : e.type === "ghost"
+              ? "Ghost touched you!"
+              : "Zombie bite!",
+        );
         if (this.hp <= 0) {
           this.hp = 0;
           this.cb.onDeath();
@@ -932,6 +1077,11 @@ export class ForestHorrorGame {
     if (this.spawnTimer <= 0 && this.enemies.length < targetCount) {
       this.spawnEnemy();
       this.spawnTimer = 4.5;
+    }
+
+    // Boss: spawn giant ent after 5 kills, only one at a time
+    if (!this.giantSpawned && this.kills >= 5 && this.giantEntTemplate) {
+      this.spawnGiantEnt();
     }
 
     this.updatePlayer(dt);
