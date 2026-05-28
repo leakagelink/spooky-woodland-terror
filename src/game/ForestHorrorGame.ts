@@ -1194,7 +1194,72 @@ export class ForestHorrorGame {
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    if (this.composer) this.composer.setSize(w, h);
+    if (this.bloomPass) this.bloomPass.setSize(w, h);
   };
+
+  private setupPostProcessing() {
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.setSize(w, h);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+    // Bloom — for muzzle flash, lightning, boss glows
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.7, 0.85);
+    this.composer.addPass(this.bloomPass);
+
+    // Vignette + film grain + chromatic aberration in a single fragment shader
+    const grainShader = {
+      uniforms: {
+        tDiffuse: { value: null as THREE.Texture | null },
+        uTime: { value: 0 },
+        uVignette: { value: 1.1 },
+        uGrain: { value: 0.06 },
+        uDamage: { value: 0 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float uTime;
+        uniform float uVignette;
+        uniform float uGrain;
+        uniform float uDamage;
+        varying vec2 vUv;
+        float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
+        void main(){
+          vec2 uv = vUv;
+          // Chromatic aberration — slight RGB split at edges
+          float ca = 0.002 + uDamage * 0.006;
+          vec2 dir = uv - 0.5;
+          vec4 col;
+          col.r = texture2D(tDiffuse, uv + dir * ca).r;
+          col.g = texture2D(tDiffuse, uv).g;
+          col.b = texture2D(tDiffuse, uv - dir * ca).b;
+          col.a = 1.0;
+          // Vignette
+          float d = distance(uv, vec2(0.5));
+          float v = smoothstep(0.85, 0.25, d * uVignette);
+          col.rgb *= mix(0.25, 1.0, v);
+          // Damage red overlay
+          col.rgb = mix(col.rgb, vec3(0.6, 0.0, 0.0), uDamage * (1.0 - v) * 0.7);
+          // Film grain
+          float g = (rand(uv * (1.0 + uTime)) - 0.5) * uGrain;
+          col.rgb += g;
+          gl_FragColor = col;
+        }
+      `,
+    };
+    this.grainPass = new ShaderPass(grainShader);
+    this.composer.addPass(this.grainPass);
+  }
+
 
   private updateWeather(dt: number) {
     // Rain falls
