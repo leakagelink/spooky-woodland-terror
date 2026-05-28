@@ -921,6 +921,9 @@ export class ForestHorrorGame {
         } else if (variant === "runner") {
           mat.emissive = new THREE.Color(0x441100);
           mat.emissiveIntensity = 0.35;
+        } else if (variant === "charger") {
+          mat.emissive = new THREE.Color(0xff5500);
+          mat.emissiveIntensity = 0.6;
         }
         m.material = mat;
         m.castShadow = true;
