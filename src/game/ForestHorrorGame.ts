@@ -986,26 +986,42 @@ export class ForestHorrorGame {
     const origin = this.camera.getWorldPosition(new THREE.Vector3());
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
     const ray = new THREE.Raycaster(origin, dir, 0, maxDist);
-    let closest: { e: Enemy; d: number } | null = null;
+    let closest: { e: Enemy; d: number; hitPoint: THREE.Vector3; bone: string } | null = null;
     for (const e of this.enemies) {
       if (!e.alive) continue;
       const hits = ray.intersectObject(e.mesh, true);
       if (hits.length && (!closest || hits[0].distance < closest.d)) {
-        closest = { e, d: hits[0].distance };
+        const h = hits[0];
+        const boneName = (h.object.name || "").toLowerCase();
+        closest = { e, d: h.distance, hitPoint: h.point.clone(), bone: boneName };
       }
     }
     if (closest) {
-      closest.e.hp -= damage;
+      // Headshot detection — by bone name OR by Y position near top of enemy bbox
+      const bbox = new THREE.Box3().setFromObject(closest.e.mesh);
+      const headThreshold = bbox.min.y + (bbox.max.y - bbox.min.y) * 0.78;
+      const isHeadByName = /head|skull|neck|cranium/.test(closest.bone);
+      const isHeadByPos = closest.hitPoint.y >= headThreshold;
+      const isHeadshot = isHeadByName || isHeadByPos;
+      const finalDamage = isHeadshot ? damage * 3 : damage;
+
+      closest.e.hp -= finalDamage;
       closest.e.hitFlash = 0.15;
-      // Tint red
-      const redMat = new THREE.MeshBasicMaterial({ color: 0xff3030 });
+      const redMat = new THREE.MeshBasicMaterial({
+        color: isHeadshot ? 0xff0000 : 0xff3030,
+      });
       closest.e.origMats.forEach((_, m) => {
         m.material = redMat;
       });
-      if (closest.e.hp <= 0) this.killEnemy(closest.e);
-      else this.cb.onMessage("Hit!");
+      if (closest.e.hp <= 0) {
+        this.killEnemy(closest.e);
+        if (isHeadshot) this.cb.onMessage("💥 HEADSHOT KILL!");
+      } else {
+        this.cb.onMessage(isHeadshot ? "💥 HEADSHOT! (3x)" : "Hit!");
+      }
     }
   }
+
 
   private killEnemy(e: Enemy) {
     e.alive = false;
