@@ -703,16 +703,17 @@ export class ForestHorrorGame {
     const t = this.clock.getElapsedTime();
     const sway = move.lengthSq() > 0 ? 0.012 : 0.004;
     const baseX = 0.13, baseY = -0.18, baseZ = -0.4;
+    const gunBaseRotX = -0.02, gunBaseRotY = -0.08, gunBaseRotZ = 0.02;
 
     if (this.muzzleFlash > 0) {
       this.muzzleLight.intensity = 12;
       this.muzzleFlash -= dt;
       const kick = this.muzzleFlash / 0.08; // 1 -> 0
       this.gunMesh.position.set(baseX, baseY + kick * 0.04, baseZ + kick * 0.08);
-      this.gunMesh.rotation.x = kick * 0.3;
+      this.gunMesh.rotation.set(gunBaseRotX + kick * 0.3, gunBaseRotY, gunBaseRotZ);
     } else {
       this.muzzleLight.intensity = 0;
-      this.gunMesh.rotation.x = 0;
+      this.gunMesh.rotation.set(gunBaseRotX, gunBaseRotY, gunBaseRotZ);
       this.gunMesh.position.x = baseX + Math.sin(t * 6) * sway;
       this.gunMesh.position.y = baseY + Math.abs(Math.cos(t * 6)) * sway;
       this.gunMesh.position.z = baseZ;
@@ -852,10 +853,10 @@ export class ForestHorrorGame {
     const dt = Math.min(0.05, this.clock.getDelta());
 
     this.spawnTimer -= dt;
-    const targetCount = Math.min(12, 3 + Math.floor(this.kills / 3));
+    const targetCount = Math.min(this.maxActiveZombies, 1 + Math.floor(this.kills / 6));
     if (this.spawnTimer <= 0 && this.enemies.length < targetCount) {
       this.spawnEnemy();
-      this.spawnTimer = 2.5;
+      this.spawnTimer = 4.5;
     }
 
     this.updatePlayer(dt);
