@@ -76,6 +76,7 @@ export class ForestHorrorGame {
   private running = true;
   private raf = 0;
   private spawnTimer = 0;
+  private readonly maxActiveZombies = 3;
 
   // Realism systems
   private sound = new SoundEngine();
@@ -395,70 +396,62 @@ export class ForestHorrorGame {
   }
 
   private buildPlayerWeapons() {
-    // Gun
+    // Gun — detailed dark first-person rifle built from reliable geometry.
+    // The imported SCAR FBX had broken/white materials, so keep this non-white model always visible.
     this.gunMesh = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 0.18, 0.5),
-      new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.8, roughness: 0.3 })
-    );
-    const barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.04, 0.04, 0.35, 8),
-      new THREE.MeshStandardMaterial({ color: 0x0a0a0a, metalness: 0.9, roughness: 0.2 })
-    );
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 0.04, -0.35);
-    const grip = new THREE.Mesh(
-      new THREE.BoxGeometry(0.1, 0.22, 0.14),
-      new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 0.8 })
-    );
-    grip.position.set(0, -0.18, 0.1);
-    this.gunMesh.add(body, barrel, grip);
+    const gunMetal = new THREE.MeshStandardMaterial({ color: 0x15181d, metalness: 0.85, roughness: 0.32, emissive: 0x030405 });
+    const blackPolymer = new THREE.MeshStandardMaterial({ color: 0x08090b, metalness: 0.2, roughness: 0.78, emissive: 0x020202 });
+    const wornEdge = new THREE.MeshStandardMaterial({ color: 0x33383f, metalness: 0.9, roughness: 0.28 });
+    const brass = new THREE.MeshStandardMaterial({ color: 0x8a6426, metalness: 0.7, roughness: 0.38 });
+
+    const boxPart = (
+      size: [number, number, number],
+      pos: [number, number, number],
+      mat: THREE.Material,
+      rot: [number, number, number] = [0, 0, 0],
+    ) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), mat);
+      mesh.position.set(...pos);
+      mesh.rotation.set(...rot);
+      this.gunMesh.add(mesh);
+      return mesh;
+    };
+    const cylPart = (
+      radiusTop: number,
+      radiusBottom: number,
+      depth: number,
+      pos: [number, number, number],
+      mat: THREE.Material,
+      rot: [number, number, number] = [Math.PI / 2, 0, 0],
+      segments = 18,
+    ) => {
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, depth, segments), mat);
+      mesh.position.set(...pos);
+      mesh.rotation.set(...rot);
+      this.gunMesh.add(mesh);
+      return mesh;
+    };
+
+    boxPart([0.18, 0.12, 0.42], [0, -0.02, -0.13], gunMetal);
+    boxPart([0.2, 0.07, 0.38], [0, 0.04, -0.38], blackPolymer);
+    boxPart([0.2, 0.025, 0.62], [0, 0.12, -0.25], wornEdge);
+    cylPart(0.025, 0.03, 0.55, [0, 0.06, -0.66], gunMetal);
+    cylPart(0.045, 0.045, 0.13, [0, 0.06, -0.98], blackPolymer);
+    boxPart([0.12, 0.27, 0.11], [0, -0.23, -0.04], blackPolymer, [-0.18, 0, 0]);
+    boxPart([0.09, 0.26, 0.12], [0, -0.23, 0.17], blackPolymer, [0.24, 0, 0]);
+    boxPart([0.15, 0.09, 0.27], [0, -0.02, 0.31], blackPolymer);
+    boxPart([0.18, 0.04, 0.09], [0, -0.05, 0.48], blackPolymer);
+    cylPart(0.045, 0.045, 0.28, [0, 0.19, -0.23], blackPolymer);
+    cylPart(0.032, 0.032, 0.32, [0, 0.19, -0.23], gunMetal);
+    boxPart([0.04, 0.06, 0.03], [-0.06, 0.14, -0.23], wornEdge);
+    boxPart([0.04, 0.06, 0.03], [0.06, 0.14, -0.23], wornEdge);
+    boxPart([0.05, 0.055, 0.03], [0, 0.16, -0.55], wornEdge);
+    boxPart([0.05, 0.06, 0.035], [0, 0.15, -0.82], wornEdge);
+    boxPart([0.025, 0.035, 0.08], [0.105, 0.03, -0.05], brass);
+
     this.gunMesh.position.set(0.13, -0.18, -0.4);
+    this.gunMesh.rotation.set(-0.02, -0.08, 0.02);
     this.camera.add(this.gunMesh);
-
-    // Async-load detailed SCAR FBX and replace primitive geometry
-    const fbxLoader = new FBXLoader();
-    fbxLoader.load(
-      "/models/weapons/scar.fbx",
-      (fbx) => {
-        // Fit gun into ~0.55 unit length
-        const box = new THREE.Box3().setFromObject(fbx);
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z) || 1;
-        const scale = 0.55 / maxDim;
-        fbx.scale.setScalar(scale);
-
-        // Center model and orient barrel forward (-Z)
-        const center = box.getCenter(new THREE.Vector3()).multiplyScalar(scale);
-        fbx.position.sub(center);
-        fbx.rotation.y = Math.PI / 2;
-
-        // Realistic dark gunmetal — gun_texture.png is a broken stub, so
-        // we use a procedural two-tone material based on mesh name.
-        fbx.traverse((o) => {
-          const m = o as THREE.Mesh;
-          if (m.isMesh) {
-            const name = (m.name || "").toLowerCase();
-            const isGrip = /grip|stock|handle|wood/.test(name);
-            m.material = new THREE.MeshStandardMaterial({
-              color: isGrip ? 0x2a1d12 : 0x1a1d22,
-              metalness: isGrip ? 0.2 : 0.85,
-              roughness: isGrip ? 0.85 : 0.35,
-              emissive: 0x050505,
-            });
-          }
-        });
-
-
-        // Remove primitive children, keep group for position/animation
-        body.visible = false;
-        barrel.visible = false;
-        grip.visible = false;
-        this.gunMesh.add(fbx);
-      },
-      undefined,
-      (err) => console.warn("Failed to load SCAR gun model", err)
-    );
 
     // Knife
     this.knifeMesh = new THREE.Group();
@@ -480,6 +473,7 @@ export class ForestHorrorGame {
   private spawnEnemy() {
     // Only spawn realistic FBX zombies. Skip until the model is loaded.
     if (!this.zombieTemplate) return;
+    if (this.enemies.length >= this.maxActiveZombies) return;
 
     const enemy = new THREE.Group();
     const model = SkeletonUtils.clone(this.zombieTemplate) as THREE.Group;
