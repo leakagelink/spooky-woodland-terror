@@ -891,18 +891,20 @@ export class ForestHorrorGame {
           e.limbs.head.rotation.z = Math.sin(t * 0.8 + e.phase) * 0.15;
           if (e.limbs.jaw) e.limbs.jaw.rotation.x = Math.sin(t * 3) * 0.15;
         }
+      } else if (e.isFbxModel) {
+        // FBX model uses baked skeletal animation
+        if (e.mixer) e.mixer.update(dt);
+        e.mesh.position.y = 0;
       } else {
-        // Zombie shamble: bobbing + limp walk cycle
+        // Zombie shamble: bobbing + limp walk cycle (fallback procedural)
         const walk = t * 4 + e.phase;
         e.mesh.position.y = Math.abs(Math.sin(walk)) * 0.05;
         if (e.limbs) {
           const swing = Math.sin(walk) * 0.6;
           e.limbs.legL.rotation.x = swing;
           e.limbs.legR.rotation.x = -swing;
-          // Arms stay reaching but sway slightly
           e.limbs.armL.rotation.x = -1.0 + Math.sin(walk + 0.5) * 0.15;
           e.limbs.armR.rotation.x = -1.0 - Math.sin(walk + 0.5) * 0.15;
-          // Head bob/tilt
           e.limbs.head.rotation.z = Math.sin(walk * 0.5) * 0.12;
           e.limbs.torso.rotation.z = Math.sin(walk) * 0.06;
         }
