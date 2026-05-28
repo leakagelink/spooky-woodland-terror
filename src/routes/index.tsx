@@ -334,7 +334,9 @@ function Game() {
       <div className="absolute bottom-6 right-6 text-white font-mono text-right z-20 pointer-events-none">
         <div className="text-xs uppercase tracking-widest text-red-400">{weapon}{ads ? " · ADS" : ""}</div>
         <div className="text-3xl font-black">{weapon === "knife" ? "∞" : `${ammo} / ${maxAmmo}`}</div>
-        <div className="text-xs text-orange-300 mt-1">🧨 {grenades}</div>
+        <div className="text-xs text-orange-300 mt-1">
+          {grenadeKind === "frag" ? "💥" : grenadeKind === "smoke" ? "💨" : "🔥"} {grenades} <span className="text-[9px] text-zinc-400 uppercase">{grenadeKind}</span>
+        </div>
       </div>
 
       <Joystick onMove={handleMove} />
