@@ -206,9 +206,13 @@ export class ForestHorrorGame {
   private readonly reloadDuration = 1.6;
   private magMesh!: THREE.Mesh;
 
-  constructor(container: HTMLElement, cb: GameCallbacks) {
+  constructor(container: HTMLElement, cb: GameCallbacks, difficulty: Difficulty = "normal") {
     this.container = container;
     this.cb = cb;
+    this.difficulty = difficulty;
+    if (difficulty === "easy") { this.dmgMul = 0.6; this.spawnMul = 1.4; this.grenadeCount = 5; }
+    else if (difficulty === "hard") { this.dmgMul = 1.6; this.spawnMul = 0.7; this.grenadeCount = 2; }
+
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
