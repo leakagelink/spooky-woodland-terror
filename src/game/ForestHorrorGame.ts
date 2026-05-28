@@ -2104,6 +2104,7 @@ export class ForestHorrorGame {
               ? "boss"
               : e.variant === "runner" ? "runner"
               : e.variant === "tank" ? "tank"
+              : e.variant === "charger" ? "charger"
               : "zombie",
           })),
         pickups: this.pickups
