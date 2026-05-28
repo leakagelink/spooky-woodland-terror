@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { SoundEngine } from "./SoundEngine";
 
 export type GameCallbacks = {
   onHealth: (hp: number) => void;
@@ -6,6 +7,8 @@ export type GameCallbacks = {
   onKills: (kills: number) => void;
   onMessage: (msg: string) => void;
   onDeath: () => void;
+  onDamage: () => void;
+  onLightning: () => void;
 };
 
 type Enemy = {
@@ -15,6 +18,9 @@ type Enemy = {
   speed: number;
   attackCd: number;
   alive: boolean;
+  hitFlash: number;
+  origMats: Map<THREE.Mesh, THREE.Material | THREE.Material[]>;
+  lastGrowl: number;
 };
 
 export class ForestHorrorGame {
@@ -58,6 +64,15 @@ export class ForestHorrorGame {
   private running = true;
   private raf = 0;
   private spawnTimer = 0;
+
+  // Realism systems
+  private sound = new SoundEngine();
+  private rain!: THREE.Points;
+  private rainPositions!: Float32Array;
+  private lightningFlash = 0;
+  private lightningTimer = 5 + Math.random() * 10;
+  private shake = 0;
+  private footstepCd = 0;
 
   constructor(container: HTMLElement, cb: GameCallbacks) {
     this.container = container;
@@ -169,6 +184,23 @@ export class ForestHorrorGame {
     this.muzzleLight.position.set(0.3, -0.2, -0.5);
 
     this.scene.add(this.camera);
+
+    // Rain particles
+    const rainCount = 1500;
+    this.rainPositions = new Float32Array(rainCount * 3);
+    for (let i = 0; i < rainCount; i++) {
+      this.rainPositions[i * 3] = (Math.random() - 0.5) * 60;
+      this.rainPositions[i * 3 + 1] = Math.random() * 25;
+      this.rainPositions[i * 3 + 2] = (Math.random() - 0.5) * 60;
+    }
+    const rainGeo = new THREE.BufferGeometry();
+    rainGeo.setAttribute("position", new THREE.BufferAttribute(this.rainPositions, 3));
+    const rainMat = new THREE.PointsMaterial({
+      color: 0xaaccee, size: 0.08, transparent: true, opacity: 0.55,
+      depthWrite: false,
+    });
+    this.rain = new THREE.Points(rainGeo, rainMat);
+    this.scene.add(this.rain);
   }
 
   private buildPlayerWeapons() {
@@ -319,6 +351,12 @@ export class ForestHorrorGame {
     enemy.position.set(this.pos.x + Math.cos(angle) * dist, 0, this.pos.z + Math.sin(angle) * dist);
     this.scene.add(enemy);
 
+    const origMats = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+    enemy.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) origMats.set(m, m.material);
+    });
+
     this.enemies.push({
       mesh: enemy,
       type: isGhost ? "ghost" : "zombie",
@@ -326,6 +364,9 @@ export class ForestHorrorGame {
       speed: isGhost ? 2.2 : 1.6,
       attackCd: 0,
       alive: true,
+      hitFlash: 0,
+      origMats,
+      lastGrowl: 0,
     });
   }
 
@@ -393,11 +434,12 @@ export class ForestHorrorGame {
   }
   public reload() {
     if (this.weapon !== "gun") return;
+    this.sound.init(); this.sound.reload();
     this.ammo = 24;
     this.cb.onAmmo(this.ammo, this.weapon);
     this.cb.onMessage("Reloaded");
   }
-  public attack() { this.tryAttack(); }
+  public attack() { this.sound.init(); this.tryAttack(); }
 
   private tryAttack() {
     if (this.fireCd > 0) return;
@@ -406,10 +448,13 @@ export class ForestHorrorGame {
       this.ammo--;
       this.fireCd = 0.25;
       this.muzzleFlash = 0.08;
+      this.shake = Math.max(this.shake, 0.25);
+      this.sound.shoot();
       this.cb.onAmmo(this.ammo, this.weapon);
       this.raycastHit(60, 35);
     } else {
       this.fireCd = 0.4;
+      this.sound.knife();
       this.raycastHit(2.5, 45);
     }
   }
@@ -428,6 +473,10 @@ export class ForestHorrorGame {
     }
     if (closest) {
       closest.e.hp -= damage;
+      closest.e.hitFlash = 0.15;
+      // Tint red
+      const redMat = new THREE.MeshBasicMaterial({ color: 0xff3030 });
+      closest.e.origMats.forEach((_, m) => { m.material = redMat; });
       if (closest.e.hp <= 0) this.killEnemy(closest.e);
       else this.cb.onMessage("Hit!");
     }
@@ -461,12 +510,25 @@ export class ForestHorrorGame {
       move.normalize();
       const sprint = this.keys["ShiftLeft"] ? 1.6 : 1.0;
       this.pos.addScaledVector(move, 4 * sprint * dt);
+      this.footstepCd -= dt;
+      if (this.footstepCd <= 0) {
+        this.sound.footstep();
+        this.footstepCd = sprint > 1 ? 0.32 : 0.45;
+      }
     }
     // Clamp inside world
     const r = Math.hypot(this.pos.x, this.pos.z);
     if (r > 120) { this.pos.x *= 120 / r; this.pos.z *= 120 / r; }
     this.pos.y = 1.7;
     this.camera.position.copy(this.pos);
+
+    // Camera shake
+    if (this.shake > 0) {
+      this.camera.position.x += (Math.random() - 0.5) * this.shake * 0.3;
+      this.camera.position.y += (Math.random() - 0.5) * this.shake * 0.3;
+      this.shake -= dt * 1.5;
+      if (this.shake < 0) this.shake = 0;
+    }
 
     if (this.fireCd > 0) this.fireCd -= dt;
 
@@ -504,26 +566,48 @@ export class ForestHorrorGame {
   }
 
   private updateEnemies(dt: number) {
+    const t = this.clock.getElapsedTime();
     for (const e of this.enemies) {
       if (!e.alive) continue;
       const toPlayer = new THREE.Vector3(this.pos.x - e.mesh.position.x, 0, this.pos.z - e.mesh.position.z);
       const dist = toPlayer.length();
       if (dist > 0.01) toPlayer.normalize();
-      e.mesh.position.addScaledVector(toPlayer, e.speed * dt);
+
+      // Stagger when hit
+      const moveSpeed = e.hitFlash > 0 ? e.speed * 0.2 : e.speed;
+      e.mesh.position.addScaledVector(toPlayer, moveSpeed * dt);
       e.mesh.lookAt(this.pos.x, e.mesh.position.y, this.pos.z);
 
       if (e.type === "ghost") {
-        e.mesh.position.y = Math.sin(this.clock.getElapsedTime() * 2 + e.mesh.id) * 0.3;
+        e.mesh.position.y = Math.sin(t * 2 + e.mesh.id) * 0.3;
       } else {
-        // zombie walk bob
-        e.mesh.position.y = Math.abs(Math.sin(this.clock.getElapsedTime() * 4 + e.mesh.id)) * 0.08;
+        e.mesh.position.y = Math.abs(Math.sin(t * 4 + e.mesh.id)) * 0.08;
+      }
+
+      // Restore materials after hit flash
+      if (e.hitFlash > 0) {
+        e.hitFlash -= dt;
+        if (e.hitFlash <= 0) {
+          e.origMats.forEach((mat, mesh) => { mesh.material = mat; });
+        }
+      }
+
+      // Periodic growl/whisper if close enough
+      if (dist < 18 && t - e.lastGrowl > 3 + Math.random() * 4) {
+        e.lastGrowl = t;
+        if (e.type === "zombie") this.sound.zombieGrowl();
+        else this.sound.ghostWhisper();
       }
 
       e.attackCd -= dt;
       if (dist < 1.6 && e.attackCd <= 0) {
         e.attackCd = 1.2;
-        this.hp -= e.type === "ghost" ? 8 : 12;
+        const dmg = e.type === "ghost" ? 8 : 12;
+        this.hp -= dmg;
+        this.shake = Math.max(this.shake, 0.4);
+        this.sound.hurt();
         this.cb.onHealth(Math.max(0, this.hp));
+        this.cb.onDamage();
         this.cb.onMessage(e.type === "ghost" ? "Ghost touched you!" : "Zombie bite!");
         if (this.hp <= 0) {
           this.hp = 0;
@@ -532,7 +616,6 @@ export class ForestHorrorGame {
         }
       }
     }
-    // cull dead
     this.enemies = this.enemies.filter((e) => e.alive);
   }
 
@@ -543,6 +626,35 @@ export class ForestHorrorGame {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   };
+
+  private updateWeather(dt: number) {
+    // Rain falls
+    for (let i = 0; i < this.rainPositions.length; i += 3) {
+      this.rainPositions[i + 1] -= 30 * dt;
+      if (this.rainPositions[i + 1] < 0) {
+        this.rainPositions[i] = this.pos.x + (Math.random() - 0.5) * 60;
+        this.rainPositions[i + 1] = 22 + Math.random() * 5;
+        this.rainPositions[i + 2] = this.pos.z + (Math.random() - 0.5) * 60;
+      }
+    }
+    this.rain.geometry.attributes.position.needsUpdate = true;
+
+    // Lightning
+    this.lightningTimer -= dt;
+    if (this.lightningTimer <= 0) {
+      this.lightningTimer = 8 + Math.random() * 15;
+      this.lightningFlash = 0.4;
+      this.cb.onLightning();
+      setTimeout(() => this.sound.thunder(), 600 + Math.random() * 800);
+    }
+    if (this.lightningFlash > 0) {
+      this.lightningFlash -= dt;
+      const intensity = Math.max(0, this.lightningFlash) * 4;
+      this.ambient.intensity = 1.1 + intensity;
+    } else {
+      this.ambient.intensity = 1.1;
+    }
+  }
 
   private loop = () => {
     if (!this.running) { this.renderer.render(this.scene, this.camera); return; }
@@ -558,6 +670,7 @@ export class ForestHorrorGame {
 
     this.updatePlayer(dt);
     this.updateEnemies(dt);
+    this.updateWeather(dt);
     this.renderer.render(this.scene, this.camera);
   };
 
@@ -567,6 +680,7 @@ export class ForestHorrorGame {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("resize", this.onResize);
+    this.sound.dispose();
     this.renderer.dispose();
     this.container.removeChild(this.renderer.domElement);
   }

@@ -26,10 +26,14 @@ function Game() {
   const [kills, setKills] = useState(0);
   const [msg, setMsg] = useState("");
   const [dead, setDead] = useState(false);
+  const [bloodFlash, setBloodFlash] = useState(false);
+  const [lightning, setLightning] = useState(false);
 
   useEffect(() => {
     if (!started || !containerRef.current) return;
     let msgTimer: ReturnType<typeof setTimeout>;
+    let bloodTimer: ReturnType<typeof setTimeout>;
+    let lightTimer: ReturnType<typeof setTimeout>;
     const game = new ForestHorrorGame(containerRef.current, {
       onHealth: setHp,
       onAmmo: (a, w) => { setAmmo(a); setWeapon(w); },
@@ -40,9 +44,22 @@ function Game() {
         msgTimer = setTimeout(() => setMsg(""), 1500);
       },
       onDeath: () => setDead(true),
+      onDamage: () => {
+        setBloodFlash(true);
+        clearTimeout(bloodTimer);
+        bloodTimer = setTimeout(() => setBloodFlash(false), 350);
+      },
+      onLightning: () => {
+        setLightning(true);
+        clearTimeout(lightTimer);
+        lightTimer = setTimeout(() => setLightning(false), 200);
+      },
     });
     gameRef.current = game;
-    return () => { clearTimeout(msgTimer); game.dispose(); gameRef.current = null; };
+    return () => {
+      clearTimeout(msgTimer); clearTimeout(bloodTimer); clearTimeout(lightTimer);
+      game.dispose(); gameRef.current = null;
+    };
   }, [started]);
 
   const handleMove = useCallback((x: number, y: number) => {
@@ -90,6 +107,29 @@ function Game() {
 
       {/* Vignette */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.85)_100%)] z-10" />
+
+      {/* Lightning flash overlay */}
+      <div
+        className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-150"
+        style={{ background: "rgba(200,220,255,0.85)", opacity: lightning ? 1 : 0 }}
+      />
+
+      {/* Blood damage overlay */}
+      <div
+        className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-300"
+        style={{
+          background: "radial-gradient(ellipse at center, transparent 30%, rgba(180,0,0,0.7) 100%)",
+          opacity: bloodFlash ? 1 : 0,
+        }}
+      />
+
+      {/* Low HP red pulse */}
+      {hp < 35 && hp > 0 && (
+        <div
+          className="pointer-events-none absolute inset-0 z-10 animate-pulse"
+          style={{ background: "radial-gradient(ellipse at center, transparent 40%, rgba(120,0,0,0.5) 100%)" }}
+        />
+      )}
 
       {/* Crosshair */}
       <div className="pointer-events-none absolute top-1/2 left-1/2 -mt-2 -ml-2 w-4 h-4 z-10">
