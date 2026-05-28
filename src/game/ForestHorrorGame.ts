@@ -16,7 +16,7 @@ export type GameCallbacks = {
 
 type Enemy = {
   mesh: THREE.Object3D;
-  type: "zombie" | "ghost" | "giant_ent";
+  type: "zombie" | "ghost" | "giant_ent" | "fallen_angel";
   hp: number;
   speed: number;
   attackCd: number;
@@ -100,6 +100,10 @@ export class ForestHorrorGame {
   private giantEntTemplate: THREE.Group | null = null;
   private giantEntAnimations: THREE.AnimationClip[] = [];
   private giantSpawned = false;
+  // Fallen angel boss (12x normal zombie)
+  private fallenAngelTemplate: THREE.Group | null = null;
+  private fallenAngelAnimations: THREE.AnimationClip[] = [];
+  private angelSpawned = false;
 
   constructor(container: HTMLElement, cb: GameCallbacks) {
     this.container = container;
@@ -134,6 +138,7 @@ export class ForestHorrorGame {
     this.bindInput();
     this.loadZombieModel();
     this.loadGiantEntModel();
+    this.loadFallenAngelModel();
     // Forest GLB uses spec-gloss extension (not supported) → renders white.
     // Skip it and rely on PBR-textured procedural trees in buildWorld().
     // this.loadForestAssets();
@@ -234,6 +239,51 @@ export class ForestHorrorGame {
       },
     );
   }
+
+  private loadFallenAngelModel() {
+    const loader = new FBXLoader();
+    loader.load(
+      "/models/enemies/fallen_angel.fbx",
+      (fbx) => {
+        const texLoader = new THREE.TextureLoader();
+        const tex = texLoader.load(
+          "/models/enemies/fallen_angel.fbm/fallenangelwarrior3dmodel_basecolor.JPEG",
+        );
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.flipY = false;
+
+        // Normalize to ~3.5m tall - imposing but not as huge as the ent
+        const box = new THREE.Box3().setFromObject(fbx);
+        const size = box.getSize(new THREE.Vector3());
+        const baseScale = 3.5 / (size.y || 1);
+        fbx.scale.setScalar(baseScale);
+
+        fbx.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) {
+            m.castShadow = true;
+            m.material = new THREE.MeshStandardMaterial({
+              map: tex,
+              color: 0xb0a890,
+              roughness: 0.55,
+              metalness: 0.45,
+              emissive: 0x330000,
+              emissiveIntensity: 0.4,
+            });
+          }
+        });
+
+        this.fallenAngelTemplate = fbx;
+        this.fallenAngelAnimations = fbx.animations || [];
+      },
+      undefined,
+      (err) => {
+        console.warn("Failed to load fallen angel FBX", err);
+      },
+    );
+  }
+
+
 
 
   private loadForestAssets() {
@@ -712,6 +762,82 @@ export class ForestHorrorGame {
     this.shake = Math.max(this.shake, 0.6);
   }
 
+  private spawnFallenAngel() {
+    if (!this.fallenAngelTemplate) return;
+    if (this.angelSpawned) return;
+
+    const enemy = new THREE.Group();
+    const model = SkeletonUtils.clone(this.fallenAngelTemplate) as THREE.Group;
+
+    model.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh && m.material) {
+        const mat = (m.material as THREE.MeshStandardMaterial).clone();
+        // Corrupted celestial tone - pale armor with crimson glow
+        mat.color.setHex(0x9a8870);
+        mat.emissive = new THREE.Color(0x550011);
+        mat.emissiveIntensity = 0.55;
+        m.material = mat;
+        m.castShadow = true;
+      }
+    });
+    enemy.add(model);
+
+    let mixer: THREE.AnimationMixer | undefined;
+    if (this.fallenAngelAnimations.length > 0) {
+      mixer = new THREE.AnimationMixer(model);
+      const action = mixer.clipAction(this.fallenAngelAnimations[0]);
+      action.timeScale = 1.0;
+      action.play();
+    }
+
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 30 + Math.random() * 15;
+    enemy.position.set(
+      this.pos.x + Math.cos(angle) * dist,
+      0,
+      this.pos.z + Math.sin(angle) * dist,
+    );
+
+    // Crimson holy/unholy glow
+    const glow = new THREE.PointLight(0xff2244, 4, 20, 2);
+    glow.position.y = 2.5;
+    enemy.add(glow);
+
+    this.scene.add(enemy);
+
+    const origMats = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+    enemy.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) origMats.set(m, m.material);
+    });
+
+    this.enemies.push({
+      mesh: enemy,
+      type: "fallen_angel",
+      hp: 720, // 12x normal zombie (60)
+      speed: 2.6, // fast & relentless
+      attackCd: 0,
+      alive: true,
+      hitFlash: 0,
+      origMats,
+      lastGrowl: 0,
+      phase: Math.random() * Math.PI * 2,
+      mixer,
+      isFbxModel: true,
+      isGiant: true,
+      attackRange: 3.0,
+      damage: 144, // 12x normal zombie (12)
+    });
+
+    this.angelSpawned = true;
+    this.cb.onMessage("⚔ A FALLEN ANGEL DESCENDS ⚔");
+    this.sound.thunder();
+    this.shake = Math.max(this.shake, 0.7);
+  }
+
+
+
 
 
   private bindInput() {
@@ -850,6 +976,10 @@ export class ForestHorrorGame {
       this.giantSpawned = false;
       this.cb.onMessage("🏆 GIANT ENT SLAIN!");
       this.shake = Math.max(this.shake, 0.8);
+    } else if (e.type === "fallen_angel") {
+      this.angelSpawned = false;
+      this.cb.onMessage("🏆 FALLEN ANGEL VANQUISHED!");
+      this.shake = Math.max(this.shake, 0.9);
     } else {
       this.cb.onMessage(e.type === "ghost" ? "Ghost banished!" : "Zombie down!");
     }
@@ -1011,11 +1141,13 @@ export class ForestHorrorGame {
         this.cb.onHealth(Math.max(0, this.hp));
         this.cb.onDamage();
         this.cb.onMessage(
-          e.isGiant
-            ? "GIANT ENT SMASH!"
-            : e.type === "ghost"
-              ? "Ghost touched you!"
-              : "Zombie bite!",
+          e.type === "fallen_angel"
+            ? "ANGEL'S WRATH!"
+            : e.type === "giant_ent"
+              ? "GIANT ENT SMASH!"
+              : e.type === "ghost"
+                ? "Ghost touched you!"
+                : "Zombie bite!",
         );
         if (this.hp <= 0) {
           this.hp = 0;
@@ -1082,6 +1214,10 @@ export class ForestHorrorGame {
     // Boss: spawn giant ent after 5 kills, only one at a time
     if (!this.giantSpawned && this.kills >= 5 && this.giantEntTemplate) {
       this.spawnGiantEnt();
+    }
+    // Boss: spawn fallen angel after 12 kills (12x powerful)
+    if (!this.angelSpawned && this.kills >= 12 && this.fallenAngelTemplate) {
+      this.spawnFallenAngel();
     }
 
     this.updatePlayer(dt);
