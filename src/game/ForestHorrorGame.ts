@@ -25,6 +25,28 @@ export type GameCallbacks = {
 
 type ZombieVariant = "normal" | "runner" | "tank";
 
+export type WeaponKind = "gun" | "shotgun" | "sniper" | "knife";
+
+type WeaponSpec = {
+  maxAmmo: number;
+  fireCd: number;
+  damage: number;
+  range: number;
+  pellets: number;
+  spread: number; // radians
+  reloadDur: number;
+  adsFov: number; // FOV when ADS-ing
+  hipSpread: number;
+};
+
+const WEAPON_SPECS: Record<WeaponKind, WeaponSpec> = {
+  gun:     { maxAmmo: 24, fireCd: 0.18, damage: 35, range: 70,  pellets: 1, spread: 0.012, reloadDur: 1.6, adsFov: 55, hipSpread: 0.025 },
+  shotgun: { maxAmmo: 6,  fireCd: 0.75, damage: 22, range: 30,  pellets: 8, spread: 0.14,  reloadDur: 2.2, adsFov: 62, hipSpread: 0.18 },
+  sniper:  { maxAmmo: 5,  fireCd: 1.2,  damage: 220, range: 180, pellets: 1, spread: 0.003, reloadDur: 2.4, adsFov: 18, hipSpread: 0.08 },
+  knife:   { maxAmmo: 0,  fireCd: 0.4,  damage: 45, range: 2.5, pellets: 1, spread: 0,      reloadDur: 0,   adsFov: 75, hipSpread: 0 },
+};
+
+
 type Enemy = {
   mesh: THREE.Object3D;
   type: "zombie" | "ghost" | "giant_ent" | "fallen_angel";
@@ -78,11 +100,22 @@ export class ForestHorrorGame {
   private vel = new THREE.Vector3();
   private hp = 100;
   private kills = 0;
-  private weapon: "gun" | "knife" = "gun";
+  private weapon: WeaponKind = "gun";
   private ammo = 24;
   private fireCd = 0;
   private flashlightOn = true;
   private muzzleFlash = 0;
+
+  // ADS + crouch
+  private adsing = false;
+  private adsT = 0; // 0 = hip, 1 = ADS
+  private baseFov = 75;
+  private crouching = false;
+  private crouchT = 0; // 0 = stand, 1 = crouch
+
+  // Grenades
+  private grenadeCount = 3;
+  private grenades: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number }[] = [];
 
   // Input
   private keys: Record<string, boolean> = {};
@@ -99,7 +132,10 @@ export class ForestHorrorGame {
   private fog!: THREE.FogExp2;
   private muzzleLight!: THREE.PointLight;
   private gunMesh!: THREE.Group;
+  private shotgunMesh!: THREE.Group;
+  private sniperMesh!: THREE.Group;
   private knifeMesh!: THREE.Group;
+
 
   private running = true;
   private paused = false;
@@ -765,7 +801,58 @@ export class ForestHorrorGame {
     this.knifeMesh.position.set(0.15, -0.18, -0.4);
     this.knifeMesh.visible = false;
     this.camera.add(this.knifeMesh);
+
+    // ===== Shotgun — short pump-action, double barrel =====
+    this.shotgunMesh = new THREE.Group();
+    const sgMetal = new THREE.MeshStandardMaterial({ color: 0x1a1a20, metalness: 0.8, roughness: 0.4 });
+    const sgWood = new THREE.MeshStandardMaterial({ color: 0x4a2810, metalness: 0.1, roughness: 0.85 });
+    const sgDark = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, metalness: 0.3, roughness: 0.7 });
+    const sgAdd = (geo: THREE.BufferGeometry, mat: THREE.Material, p: [number, number, number], r: [number, number, number] = [0, 0, 0]) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(...p); m.rotation.set(...r);
+      this.shotgunMesh.add(m); return m;
+    };
+    sgAdd(new THREE.BoxGeometry(0.16, 0.1, 0.3), sgMetal, [0, 0, -0.12]); // receiver
+    sgAdd(new THREE.CylinderGeometry(0.035, 0.035, 0.6, 14), sgMetal, [-0.04, 0.08, -0.5], [Math.PI / 2, 0, 0]); // barrel L
+    sgAdd(new THREE.CylinderGeometry(0.035, 0.035, 0.6, 14), sgMetal, [0.04, 0.08, -0.5], [Math.PI / 2, 0, 0]); // barrel R
+    sgAdd(new THREE.BoxGeometry(0.16, 0.05, 0.35), sgWood, [0, -0.04, -0.5]); // forend
+    sgAdd(new THREE.BoxGeometry(0.08, 0.22, 0.1), sgWood, [0, -0.18, 0.05], [-0.25, 0, 0]); // grip
+    sgAdd(new THREE.BoxGeometry(0.1, 0.13, 0.32), sgWood, [0, -0.05, 0.22], [0.12, 0, 0]); // stock
+    sgAdd(new THREE.BoxGeometry(0.04, 0.05, 0.04), sgDark, [0, 0.13, -0.78]); // bead sight
+    this.shotgunMesh.position.set(0.13, -0.18, -0.4);
+    this.shotgunMesh.rotation.set(-0.02, -0.08, 0.02);
+    this.shotgunMesh.visible = false;
+    this.camera.add(this.shotgunMesh);
+
+    // ===== Sniper — long bolt-action with scope =====
+    this.sniperMesh = new THREE.Group();
+    const snMetal = new THREE.MeshStandardMaterial({ color: 0x12141a, metalness: 0.9, roughness: 0.3 });
+    const snStock = new THREE.MeshStandardMaterial({ color: 0x2a3025, metalness: 0.1, roughness: 0.9 });
+    const snScope = new THREE.MeshStandardMaterial({ color: 0x050608, metalness: 0.6, roughness: 0.4 });
+    const snLens = new THREE.MeshStandardMaterial({ color: 0x223344, metalness: 0.9, roughness: 0.1, emissive: 0x112233, emissiveIntensity: 0.3 });
+    const snAdd = (geo: THREE.BufferGeometry, mat: THREE.Material, p: [number, number, number], r: [number, number, number] = [0, 0, 0]) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(...p); m.rotation.set(...r);
+      this.sniperMesh.add(m); return m;
+    };
+    snAdd(new THREE.BoxGeometry(0.14, 0.1, 0.5), snMetal, [0, -0.02, -0.15]); // receiver
+    snAdd(new THREE.CylinderGeometry(0.022, 0.022, 1.0, 14), snMetal, [0, 0.05, -0.8], [Math.PI / 2, 0, 0]); // long barrel
+    snAdd(new THREE.CylinderGeometry(0.035, 0.035, 0.14, 14), snMetal, [0, 0.05, -1.28], [Math.PI / 2, 0, 0]); // muzzle brake
+    snAdd(new THREE.BoxGeometry(0.13, 0.09, 0.45), snStock, [0, -0.08, 0.25]); // stock
+    snAdd(new THREE.BoxGeometry(0.08, 0.2, 0.1), snStock, [0, -0.2, 0.0], [-0.2, 0, 0]); // grip
+    // Scope
+    snAdd(new THREE.CylinderGeometry(0.05, 0.05, 0.35, 16), snScope, [0, 0.18, -0.15], [Math.PI / 2, 0, 0]);
+    snAdd(new THREE.CylinderGeometry(0.07, 0.07, 0.08, 16), snScope, [0, 0.18, -0.32], [Math.PI / 2, 0, 0]);
+    snAdd(new THREE.CylinderGeometry(0.06, 0.06, 0.08, 16), snScope, [0, 0.18, 0.02], [Math.PI / 2, 0, 0]);
+    snAdd(new THREE.CircleGeometry(0.05, 16), snLens, [0, 0.18, 0.06]);
+    snAdd(new THREE.BoxGeometry(0.03, 0.1, 0.03), snScope, [0, 0.13, -0.15]); // scope mount
+    snAdd(new THREE.BoxGeometry(0.06, 0.04, 0.18), snMetal, [0, -0.08, -0.05]); // mag
+    this.sniperMesh.position.set(0.13, -0.18, -0.35);
+    this.sniperMesh.rotation.set(-0.02, -0.08, 0.02);
+    this.sniperMesh.visible = false;
+    this.camera.add(this.sniperMesh);
   }
+
 
   private spawnEnemy() {
     if (!this.zombieTemplate) return;
@@ -1034,14 +1121,21 @@ export class ForestHorrorGame {
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
 
-    canvas.addEventListener("click", () => {
+    canvas.addEventListener("mousedown", (e) => {
       if (document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
-      this.attack();
+      if (e.button === 0) this.attack();
+      if (e.button === 2) this.setAds(true);
     });
+    canvas.addEventListener("mouseup", (e) => {
+      if (e.button === 2) this.setAds(false);
+    });
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     document.addEventListener("mousemove", (e) => {
       if (document.pointerLockElement === canvas) {
-        this.yaw -= e.movementX * 0.0025;
-        this.pitch -= e.movementY * 0.0025;
+        // ADS reduces mouse sensitivity (steadier aim)
+        const sens = this.adsing ? 0.0011 : 0.0025;
+        this.yaw -= e.movementX * sens;
+        this.pitch -= e.movementY * sens;
         this.pitch = Math.max(-1.2, Math.min(1.2, this.pitch));
       }
     });
@@ -1059,8 +1153,9 @@ export class ForestHorrorGame {
     canvas.addEventListener("touchmove", (e) => {
       if (!this.looking) return;
       const t = e.touches[e.touches.length - 1];
-      this.yaw -= (t.clientX - this.lastTouchX) * 0.005;
-      this.pitch -= (t.clientY - this.lastTouchY) * 0.005;
+      const sens = this.adsing ? 0.0022 : 0.005;
+      this.yaw -= (t.clientX - this.lastTouchX) * sens;
+      this.pitch -= (t.clientY - this.lastTouchY) * sens;
       this.pitch = Math.max(-1.2, Math.min(1.2, this.pitch));
       this.lastTouchX = t.clientX;
       this.lastTouchY = t.clientY;
@@ -1074,8 +1169,12 @@ export class ForestHorrorGame {
     this.keys[e.code] = true;
     if (e.code === "KeyF") this.toggleFlashlight();
     if (e.code === "Digit1") this.setWeapon("gun");
-    if (e.code === "Digit2") this.setWeapon("knife");
+    if (e.code === "Digit2") this.setWeapon("shotgun");
+    if (e.code === "Digit3") this.setWeapon("sniper");
+    if (e.code === "Digit4") this.setWeapon("knife");
     if (e.code === "KeyR") this.reload();
+    if (e.code === "KeyG") this.throwGrenade();
+    if (e.code === "KeyC") this.toggleCrouch();
     if (e.code === "Escape" || e.code === "KeyP") this.togglePause();
   };
   private onKeyUp = (e: KeyboardEvent) => {
@@ -1090,7 +1189,7 @@ export class ForestHorrorGame {
       if (document.pointerLockElement) document.exitPointerLock?.();
     } else {
       this.cb.onMessage("Resumed");
-      this.clock.getDelta(); // discard accumulated delta
+      this.clock.getDelta();
     }
   }
   public isPaused() { return this.paused; }
@@ -1104,21 +1203,39 @@ export class ForestHorrorGame {
     this.flashlight.intensity = this.flashlightOn ? 20 : 0;
     this.cb.onMessage(this.flashlightOn ? "Flashlight ON" : "Flashlight OFF");
   }
-  public setWeapon(w: "gun" | "knife") {
+  public setAds(on: boolean) {
+    if (this.weapon === "knife") { this.adsing = false; return; }
+    this.adsing = on;
+  }
+  public toggleAds() { this.setAds(!this.adsing); }
+  public isAds() { return this.adsing; }
+  public currentWeapon(): WeaponKind { return this.weapon; }
+  public toggleCrouch() {
+    this.crouching = !this.crouching;
+    this.cb.onMessage(this.crouching ? "Crouched" : "Standing");
+  }
+  public setWeapon(w: WeaponKind) {
     this.weapon = w;
     this.gunMesh.visible = w === "gun";
+    this.shotgunMesh.visible = w === "shotgun";
+    this.sniperMesh.visible = w === "sniper";
     this.knifeMesh.visible = w === "knife";
+    // Clamp ammo into new spec's mag
+    const spec = WEAPON_SPECS[w];
+    if (this.ammo > spec.maxAmmo) this.ammo = spec.maxAmmo;
+    if (w === "knife") this.adsing = false;
     this.cb.onAmmo(this.ammo, this.weapon);
+    this.cb.onMessage(`Equipped: ${w.toUpperCase()}`);
   }
   public reload() {
-    if (this.weapon !== "gun") return;
+    const spec = WEAPON_SPECS[this.weapon];
+    if (this.weapon === "knife") return;
     if (this.reloading > 0) return;
-    if (this.ammo >= 24) return;
+    if (this.ammo >= spec.maxAmmo) return;
     this.sound.init();
     this.sound.reload();
-    this.reloading = this.reloadDuration;
+    this.reloading = spec.reloadDur;
     this.cb.onMessage("Reloading...");
-    // Refill ammo at end of animation (handled in updatePlayer)
   }
   public attack() {
     this.sound.init();
@@ -1128,28 +1245,46 @@ export class ForestHorrorGame {
   private tryAttack() {
     if (this.fireCd > 0) return;
     if (this.reloading > 0) return;
-    if (this.weapon === "gun") {
-      if (this.ammo <= 0) {
-        this.cb.onMessage("Out of ammo! Press R");
-        return;
-      }
-      this.ammo--;
-      this.fireCd = 0.25;
-      this.muzzleFlash = 0.08;
-      this.shake = Math.max(this.shake, 0.25);
-      this.sound.shoot();
-      this.cb.onAmmo(this.ammo, this.weapon);
-      this.raycastHit(60, 35);
-    } else {
-      this.fireCd = 0.4;
+    const spec = WEAPON_SPECS[this.weapon];
+    if (this.weapon === "knife") {
+      this.fireCd = spec.fireCd;
       this.sound.knife();
-      this.raycastHit(2.5, 45);
+      this.raycastShot(spec.range, spec.damage, 0);
+      return;
+    }
+    if (this.ammo <= 0) {
+      this.cb.onMessage("Out of ammo! Press R");
+      return;
+    }
+    this.ammo--;
+    this.fireCd = spec.fireCd;
+    this.muzzleFlash = this.weapon === "sniper" ? 0.14 : this.weapon === "shotgun" ? 0.12 : 0.08;
+    const baseShake = this.weapon === "sniper" ? 0.7 : this.weapon === "shotgun" ? 0.55 : 0.25;
+    this.shake = Math.max(this.shake, this.adsing ? baseShake * 0.5 : baseShake);
+    this.sound.shoot();
+    this.cb.onAmmo(this.ammo, this.weapon);
+
+    // Spread: ADS uses tight spread, hip uses wider; crouch tightens 50%
+    let spread = this.adsing ? spec.spread : spec.hipSpread;
+    if (this.crouching) spread *= 0.5;
+
+    // Fire pellets (shotgun = 8, others = 1)
+    for (let i = 0; i < spec.pellets; i++) {
+      this.raycastShot(spec.range, spec.damage, spread);
     }
   }
 
-  private raycastHit(maxDist: number, damage: number) {
+  private raycastShot(maxDist: number, damage: number, spread: number) {
     const origin = this.camera.getWorldPosition(new THREE.Vector3());
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    if (spread > 0) {
+      // Random cone offset
+      const yawOff = (Math.random() - 0.5) * spread * 2;
+      const pitchOff = (Math.random() - 0.5) * spread * 2;
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
+      dir.addScaledVector(right, yawOff).addScaledVector(up, pitchOff).normalize();
+    }
     const ray = new THREE.Raycaster(origin, dir, 0, maxDist);
     let closest: { e: Enemy; d: number; hitPoint: THREE.Vector3; bone: string } | null = null;
     for (const e of this.enemies) {
@@ -1162,7 +1297,6 @@ export class ForestHorrorGame {
       }
     }
     if (closest) {
-      // Headshot detection — by bone name OR by Y position near top of enemy bbox
       const bbox = new THREE.Box3().setFromObject(closest.e.mesh);
       const headThreshold = bbox.min.y + (bbox.max.y - bbox.min.y) * 0.78;
       const isHeadByName = /head|skull|neck|cranium/.test(closest.bone);
@@ -1186,6 +1320,113 @@ export class ForestHorrorGame {
       }
     }
   }
+
+  public throwGrenade() {
+    if (this.grenadeCount <= 0) {
+      this.cb.onMessage("No grenades!");
+      return;
+    }
+    this.grenadeCount--;
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.12, 12, 10),
+      new THREE.MeshStandardMaterial({ color: 0x2a3a1c, roughness: 0.6, metalness: 0.4, emissive: 0x110000, emissiveIntensity: 0.4 }),
+    );
+    mesh.castShadow = true;
+    const origin = this.camera.getWorldPosition(new THREE.Vector3());
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    mesh.position.copy(origin).addScaledVector(dir, 0.5);
+    const vel = dir.clone().multiplyScalar(18).add(new THREE.Vector3(0, 4, 0));
+    this.scene.add(mesh);
+    this.grenades.push({ mesh, vel, t: 2.2 });
+    this.sound.init();
+    this.cb.onMessage(`Grenade thrown! (${this.grenadeCount} left)`);
+  }
+
+  private updateGrenades(dt: number) {
+    for (const g of this.grenades) {
+      if (g.t <= 0) continue;
+      g.t -= dt;
+      // Physics
+      g.vel.y -= 16 * dt;
+      g.mesh.position.addScaledVector(g.vel, dt);
+      g.mesh.rotation.x += dt * 6;
+      g.mesh.rotation.z += dt * 4;
+      // Floor bounce
+      if (g.mesh.position.y < 0.15) {
+        g.mesh.position.y = 0.15;
+        g.vel.y *= -0.4;
+        g.vel.x *= 0.7;
+        g.vel.z *= 0.7;
+      }
+      if (g.t <= 0) this.explodeGrenade(g);
+    }
+    this.grenades = this.grenades.filter((g) => g.t > 0);
+  }
+
+  private explodeGrenade(g: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number }) {
+    const pos = g.mesh.position.clone();
+    this.scene.remove(g.mesh);
+    g.t = -1;
+    this.sound.thunder();
+
+    // Bright flash light
+    const flash = new THREE.PointLight(0xffaa44, 30, 25, 2);
+    flash.position.copy(pos);
+    this.scene.add(flash);
+    let life = 0.3;
+    const fade = () => {
+      life -= 0.05;
+      flash.intensity = Math.max(0, life * 100);
+      if (life > 0) setTimeout(fade, 30);
+      else this.scene.remove(flash);
+    };
+    fade();
+
+    // Smoke/debris ring
+    const ringGeo = new THREE.RingGeometry(0.3, 0.5, 24);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffaa55, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.copy(pos);
+    ring.rotation.x = -Math.PI / 2;
+    this.scene.add(ring);
+    let rs = 1;
+    const grow = () => {
+      rs += 0.6;
+      ring.scale.setScalar(rs);
+      ringMat.opacity *= 0.85;
+      if (ringMat.opacity > 0.05) setTimeout(grow, 30);
+      else this.scene.remove(ring);
+    };
+    grow();
+
+    // Damage all enemies in radius
+    const radius = 6;
+    const baseDmg = 200;
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const d = e.mesh.position.distanceTo(pos);
+      if (d > radius) continue;
+      const falloff = 1 - d / radius;
+      const dmg = baseDmg * falloff;
+      e.hp -= dmg;
+      e.hitFlash = 0.2;
+      if (e.hp <= 0) this.killEnemy(e);
+    }
+    // Player damage if too close
+    const pd = pos.distanceTo(this.pos);
+    if (pd < radius) {
+      const selfDmg = (1 - pd / radius) * 80;
+      this.hp = Math.max(0, this.hp - selfDmg);
+      this.cb.onHealth(this.hp);
+      this.cb.onDamage();
+      if (this.hp <= 0) { this.cb.onDeath(); this.running = false; }
+    }
+    this.shake = Math.max(this.shake, Math.min(1.2, 1.2 * (1 - pd / 30)));
+  }
+
+  public getGrenades() { return this.grenadeCount; }
+
+
 
 
   private killEnemy(e: Enemy) {
@@ -1343,15 +1584,19 @@ export class ForestHorrorGame {
     if (move.lengthSq() > 0) {
       move.normalize();
       const wantsSprint = !!(this.keys["ShiftLeft"] || this.keys["ShiftRight"]);
-      sprintActive = wantsSprint && this.stamina > 5;
-      const sprintMul = sprintActive ? 1.7 : 1.0;
-      this.pos.addScaledVector(move, 4 * sprintMul * dt);
+      // Can't sprint while ADS or crouched
+      sprintActive = wantsSprint && this.stamina > 5 && !this.adsing && !this.crouching;
+      let speedMul = sprintActive ? 1.7 : 1.0;
+      if (this.adsing) speedMul *= 0.45;
+      if (this.crouching) speedMul *= 0.55;
+      this.pos.addScaledVector(move, 4 * speedMul * dt);
       this.footstepCd -= dt;
       if (this.footstepCd <= 0) {
         this.sound.footstep();
-        this.footstepCd = sprintActive ? 0.3 : 0.45;
+        this.footstepCd = sprintActive ? 0.3 : this.crouching ? 0.7 : 0.45;
       }
     }
+
     this.sprinting = sprintActive;
     // Stamina drain / regen
     if (sprintActive) {
@@ -1367,16 +1612,28 @@ export class ForestHorrorGame {
       this.pos.x *= 120 / r;
       this.pos.z *= 120 / r;
     }
-    this.pos.y = 1.7;
+    // Crouch lerp
+    const crouchTarget = this.crouching ? 1 : 0;
+    this.crouchT += (crouchTarget - this.crouchT) * Math.min(1, dt * 8);
+    this.pos.y = 1.7 - this.crouchT * 0.6;
     this.camera.position.copy(this.pos);
 
-    // Camera shake
+    // Camera shake (reduced while ADS)
     if (this.shake > 0) {
-      this.camera.position.x += (Math.random() - 0.5) * this.shake * 0.3;
-      this.camera.position.y += (Math.random() - 0.5) * this.shake * 0.3;
+      const shakeMul = this.adsing ? 0.35 : 1.0;
+      this.camera.position.x += (Math.random() - 0.5) * this.shake * 0.3 * shakeMul;
+      this.camera.position.y += (Math.random() - 0.5) * this.shake * 0.3 * shakeMul;
       this.shake -= dt * 1.5;
       if (this.shake < 0) this.shake = 0;
     }
+
+    // ADS — lerp FOV
+    const spec = WEAPON_SPECS[this.weapon];
+    const targetAdsT = this.adsing ? 1 : 0;
+    this.adsT += (targetAdsT - this.adsT) * Math.min(1, dt * (this.weapon === "sniper" ? 9 : 12));
+    const targetFov = this.adsing ? spec.adsFov : this.baseFov;
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1, dt * 12));
+    this.camera.updateProjectionMatrix();
 
     if (this.fireCd > 0) this.fireCd -= dt;
 
@@ -1392,31 +1649,38 @@ export class ForestHorrorGame {
     // Reload animation drives gun pose when active
     if (this.reloading > 0) {
       this.reloading -= dt;
-      const p = 1 - this.reloading / this.reloadDuration; // 0 -> 1
-      // Down/tilt during first half, return during second half
-      const dip = Math.sin(p * Math.PI); // 0 -> 1 -> 0
+      const dur = WEAPON_SPECS[this.weapon].reloadDur || this.reloadDuration;
+      const p = 1 - this.reloading / dur; // 0 -> 1
+      const dip = Math.sin(p * Math.PI);
       this.gunMesh.position.set(baseX, baseY - dip * 0.18, baseZ + dip * 0.05);
       this.gunMesh.rotation.set(
         gunBaseRotX + dip * 0.6,
         gunBaseRotY - dip * 0.3,
         gunBaseRotZ - dip * 0.15,
       );
-      // Magazine drops out in first 40%, snaps back in last 30%
-      if (p < 0.4) {
-        const mp = p / 0.4;
-        this.magMesh.position.y = -0.18 - mp * 0.5;
-        this.magMesh.rotation.x = mp * 0.5;
-      } else if (p > 0.7) {
-        const mp = (p - 0.7) / 0.3;
-        this.magMesh.position.y = -0.18 - (1 - mp) * 0.3;
-        this.magMesh.rotation.x = (1 - mp) * 0.3;
-      } else {
-        this.magMesh.position.y = -0.68;
-        this.magMesh.rotation.x = 0.5;
+      // Same dip for shotgun/sniper meshes
+      this.shotgunMesh.position.copy(this.gunMesh.position);
+      this.shotgunMesh.rotation.copy(this.gunMesh.rotation);
+      this.sniperMesh.position.copy(this.gunMesh.position);
+      this.sniperMesh.rotation.copy(this.gunMesh.rotation);
+      // Magazine drops only for rifle
+      if (this.weapon === "gun") {
+        if (p < 0.4) {
+          const mp = p / 0.4;
+          this.magMesh.position.y = -0.18 - mp * 0.5;
+          this.magMesh.rotation.x = mp * 0.5;
+        } else if (p > 0.7) {
+          const mp = (p - 0.7) / 0.3;
+          this.magMesh.position.y = -0.18 - (1 - mp) * 0.3;
+          this.magMesh.rotation.x = (1 - mp) * 0.3;
+        } else {
+          this.magMesh.position.y = -0.68;
+          this.magMesh.rotation.x = 0.5;
+        }
       }
       if (this.reloading <= 0) {
         this.reloading = 0;
-        this.ammo = 24;
+        this.ammo = WEAPON_SPECS[this.weapon].maxAmmo;
         this.cb.onAmmo(this.ammo, this.weapon);
         this.cb.onMessage("Reloaded");
         this.magMesh.position.set(0, -0.18, -0.08);
@@ -1424,6 +1688,7 @@ export class ForestHorrorGame {
       }
       this.muzzleLight.intensity = 0;
     } else if (this.muzzleFlash > 0) {
+
       this.muzzleLight.intensity = 12;
       this.muzzleFlash -= dt;
       const kick = this.muzzleFlash / 0.08; // 1 -> 0
@@ -1435,6 +1700,38 @@ export class ForestHorrorGame {
       this.gunMesh.position.x = baseX + Math.sin(t * 6) * sway;
       this.gunMesh.position.y = baseY + Math.abs(Math.cos(t * 6)) * sway;
       this.gunMesh.position.z = baseZ;
+    }
+
+    // Apply ADS offset (pull weapon to center) — applies to whichever gun is visible.
+    // Sniper goes further in to bring scope to eye.
+    const adsOffset = this.weapon === "sniper" ? 0.18 : 0.1;
+    const adsCenter = -baseX; // pull toward 0 on X
+    const activeMesh =
+      this.weapon === "shotgun" ? this.shotgunMesh :
+      this.weapon === "sniper" ? this.sniperMesh :
+      this.weapon === "knife" ? null :
+      this.gunMesh;
+    if (activeMesh && this.weapon !== "knife" && this.reloading <= 0) {
+      // Lerp toward ADS pose
+      const ax = baseX + adsCenter * this.adsT;
+      const ay = baseY + 0.18 * this.adsT - (this.weapon === "sniper" ? 0.04 : 0);
+      const az = baseZ + adsOffset * this.adsT;
+      if (activeMesh !== this.gunMesh) {
+        // For shotgun/sniper, follow same sway + ADS
+        activeMesh.rotation.set(gunBaseRotX, gunBaseRotY * (1 - this.adsT), gunBaseRotZ * (1 - this.adsT));
+        activeMesh.position.x = ax + Math.sin(t * 6) * sway * (1 - this.adsT);
+        activeMesh.position.y = ay + Math.abs(Math.cos(t * 6)) * sway * (1 - this.adsT);
+        activeMesh.position.z = az;
+      } else {
+        // Blend rifle existing pos toward ADS center
+        activeMesh.position.x = THREE.MathUtils.lerp(activeMesh.position.x, ax, this.adsT);
+        activeMesh.position.y = THREE.MathUtils.lerp(activeMesh.position.y, ay, this.adsT);
+        activeMesh.position.z = THREE.MathUtils.lerp(activeMesh.position.z, az, this.adsT);
+      }
+      // Hide sniper rifle when fully ADS'd — UI scope overlay takes over
+      if (this.weapon === "sniper") {
+        this.sniperMesh.visible = this.adsT < 0.85;
+      }
     }
 
     // Knife slash animation when attacking
@@ -1451,6 +1748,7 @@ export class ForestHorrorGame {
       this.knifeMesh.position.z = baseZ;
     }
   }
+
 
   private updateEnemies(dt: number) {
     const t = this.clock.getElapsedTime();
@@ -1686,7 +1984,9 @@ export class ForestHorrorGame {
     this.updatePlayer(dt);
     this.updateEnemies(dt);
     this.updatePickups(dt);
+    this.updateGrenades(dt);
     this.updateWeather(dt);
+
 
     // Minimap broadcast (throttled ~10Hz)
     this.minimapCd -= dt;
