@@ -242,32 +242,93 @@ export class ForestHorrorGame {
     const hemi = new THREE.HemisphereLight(0x223344, 0x0a0f08, 0.6);
     this.scene.add(hemi);
 
-    // Ground
+    // Texture loader for PBR forest assets
+    const texLoader = new THREE.TextureLoader();
+    const loadTex = (path: string, repeat = 1, srgb = false) => {
+      const t = texLoader.load(path);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(repeat, repeat);
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = 4;
+      return t;
+    };
+
+    // Ground — tiled dirt PBR
     const groundGeo = new THREE.PlaneGeometry(300, 300, 64, 64);
-    const pos = groundGeo.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), y = pos.getY(i);
-      pos.setZ(i, Math.sin(x * 0.3) * 0.3 + Math.cos(y * 0.2) * 0.4 + Math.random() * 0.2);
+    const gpos = groundGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < gpos.count; i++) {
+      const x = gpos.getX(i), y = gpos.getY(i);
+      gpos.setZ(i, Math.sin(x * 0.3) * 0.3 + Math.cos(y * 0.2) * 0.4 + Math.random() * 0.2);
     }
     groundGeo.computeVertexNormals();
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0x35402a, roughness: 1, metalness: 0 });
+    const groundMat = new THREE.MeshStandardMaterial({
+      map: loadTex("/textures/forest/Ground_Dirt_Diffuse.jpeg", 40, true),
+      normalMap: loadTex("/textures/forest/Ground_Dirt_Normal.jpeg", 40),
+      roughnessMap: loadTex("/textures/forest/Ground_Dirt_Roughness.jpeg", 40),
+      color: 0x6b5a3a,
+      roughness: 1,
+      metalness: 0,
+    });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     this.scene.add(ground);
 
-    // Trees
-    const trunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 6, 8);
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3a2818, roughness: 1 });
-    const leafGeo = new THREE.ConeGeometry(2.2, 5, 8);
-    const leafMat = new THREE.MeshStandardMaterial({ color: 0x1a3018, roughness: 1 });
+    // Grass blade patches scattered around
+    const grassDiffuse = loadTex("/textures/forest/Grass_Vegetation_Green_Diffuse.png", 1, true);
+    const grassOpacity = loadTex("/textures/forest/Grass_Vegetation_Opacity.png", 1);
+    const grassMat = new THREE.MeshStandardMaterial({
+      map: grassDiffuse,
+      alphaMap: grassOpacity,
+      transparent: true,
+      alphaTest: 0.4,
+      side: THREE.DoubleSide,
+      roughness: 1,
+    });
+    const grassGeo = new THREE.PlaneGeometry(1.2, 0.8);
+    for (let i = 0; i < 220; i++) {
+      const g = new THREE.Mesh(grassGeo, grassMat);
+      const a = Math.random() * Math.PI * 2;
+      const r = 4 + Math.random() * 110;
+      g.position.set(Math.cos(a) * r, 0.4, Math.sin(a) * r);
+      g.rotation.y = Math.random() * Math.PI;
+      g.scale.setScalar(0.7 + Math.random() * 0.9);
+      this.scene.add(g);
+    }
+
+    // Trees — realistic oak trunk + bush canopy
+    const trunkMap = loadTex("/textures/forest/Trunk_Oak_Diffuse.png", 1, true);
+    const trunkNormal = loadTex("/textures/forest/Trunk_Oak_Normal.png", 1);
+    const trunkRough = loadTex("/textures/forest/Trunk_Oak_Roughness.png", 1);
+    const trunkGeo = new THREE.CylinderGeometry(0.35, 0.55, 7, 10);
+    const trunkMat = new THREE.MeshStandardMaterial({
+      map: trunkMap, normalMap: trunkNormal, roughnessMap: trunkRough,
+      color: 0x8a6a45, roughness: 1,
+    });
+    const leafDiff = loadTex("/textures/forest/Bush_Leaves_Diffuse.png", 1, true);
+    const leafNormal = loadTex("/textures/forest/Bush_Leaves_Normal.png", 1);
+    const leafOpacity = loadTex("/textures/forest/Bush_Leaves_Opacity.png", 1);
+    const leafMat = new THREE.MeshStandardMaterial({
+      map: leafDiff, normalMap: leafNormal, alphaMap: leafOpacity,
+      transparent: true, alphaTest: 0.45, side: THREE.DoubleSide,
+      color: 0x6b8a3c, roughness: 1,
+    });
+    const leafGeo = new THREE.SphereGeometry(2.4, 8, 6);
     for (let i = 0; i < 140; i++) {
       const tree = new THREE.Group();
       const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-      trunk.position.y = 3;
+      trunk.position.y = 3.5;
       tree.add(trunk);
-      const leaves = new THREE.Mesh(leafGeo, leafMat);
-      leaves.position.y = 7.5;
-      tree.add(leaves);
+      // Multi-cluster canopy for fuller look
+      for (let j = 0; j < 3; j++) {
+        const leaves = new THREE.Mesh(leafGeo, leafMat);
+        leaves.position.set(
+          (Math.random() - 0.5) * 1.5,
+          7 + Math.random() * 1.2,
+          (Math.random() - 0.5) * 1.5,
+        );
+        leaves.scale.setScalar(0.8 + Math.random() * 0.5);
+        tree.add(leaves);
+      }
       const angle = Math.random() * Math.PI * 2;
       const r = 8 + Math.random() * 110;
       tree.position.set(Math.cos(angle) * r, 0, Math.sin(angle) * r);
@@ -278,17 +339,24 @@ export class ForestHorrorGame {
       this.trees.push(tree);
     }
 
-    // Some rocks
+    // Realistic rocks
+    const rockMat = new THREE.MeshStandardMaterial({
+      map: loadTex("/textures/forest/Broken_Rocks_Diffuse.jpeg", 1, true),
+      normalMap: loadTex("/textures/forest/Broken_Rocks_Normal.jpeg", 1),
+      roughnessMap: loadTex("/textures/forest/Broken_Rocks_Roughness.jpeg", 1),
+      color: 0x6a6a70, roughness: 1, flatShading: true,
+    });
     const rockGeo = new THREE.DodecahedronGeometry(1, 0);
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x4a4a50, roughness: 1, flatShading: true });
     for (let i = 0; i < 40; i++) {
       const rock = new THREE.Mesh(rockGeo, rockMat);
       const angle = Math.random() * Math.PI * 2;
       const r = 5 + Math.random() * 100;
       rock.position.set(Math.cos(angle) * r, 0.3 + Math.random() * 0.4, Math.sin(angle) * r);
-      rock.scale.setScalar(0.5 + Math.random() * 1.2);
+      rock.rotation.set(Math.random(), Math.random(), Math.random());
+      rock.scale.setScalar(0.5 + Math.random() * 1.5);
       this.scene.add(rock);
     }
+
 
     // Flashlight attached to camera (no shadows for mobile perf)
     this.flashlight = new THREE.SpotLight(0xfff0c0, 60, 45, Math.PI / 6, 0.5, 1.2);
