@@ -311,18 +311,37 @@ export class ForestHorrorGame {
         gltf.scene.children.forEach((c) => prototypes.push(c));
         if (prototypes.length === 0) return;
 
-        // Ensure materials render correctly
+        // Convert any spec-gloss / unsupported materials to MeshStandardMaterial
+        // so they render with proper color instead of plain white.
         prototypes.forEach((p) => {
           p.traverse((o) => {
             const m = o as THREE.Mesh;
-            if (m.isMesh) {
-              m.castShadow = false;
-              m.receiveShadow = false;
-              const mat = m.material as THREE.MeshStandardMaterial;
-              if (mat && "roughness" in mat) {
-                mat.roughness = Math.min(1, (mat.roughness ?? 1) + 0.1);
+            if (!m.isMesh) return;
+            m.castShadow = false;
+            m.receiveShadow = true;
+            const oldMats = Array.isArray(m.material) ? m.material : [m.material];
+            const newMats = oldMats.map((om: any) => {
+              const map = om?.map ?? om?.diffuseMap ?? null;
+              const normalMap = om?.normalMap ?? null;
+              const color = om?.color ? om.color.clone() : new THREE.Color(0x6b8050);
+              // If material had no diffuse map AND was white, give it a foliage tint
+              if (!map && color.r > 0.9 && color.g > 0.9 && color.b > 0.9) {
+                color.setHex(0x5a7a3a);
               }
-            }
+              if (map) map.colorSpace = THREE.SRGBColorSpace;
+              const mat = new THREE.MeshStandardMaterial({
+                map,
+                normalMap,
+                color: map ? 0xffffff : color,
+                roughness: 0.92,
+                metalness: 0.0,
+                transparent: !!(om?.transparent || om?.alphaTest),
+                alphaTest: om?.alphaTest || (om?.transparent ? 0.3 : 0),
+                side: THREE.DoubleSide,
+              });
+              return mat;
+            });
+            m.material = Array.isArray(m.material) ? newMats : newMats[0];
           });
         });
 
