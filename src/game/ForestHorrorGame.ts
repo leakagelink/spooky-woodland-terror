@@ -947,11 +947,13 @@ export class ForestHorrorGame {
   }
   public reload() {
     if (this.weapon !== "gun") return;
+    if (this.reloading > 0) return;
+    if (this.ammo >= 24) return;
     this.sound.init();
     this.sound.reload();
-    this.ammo = 24;
-    this.cb.onAmmo(this.ammo, this.weapon);
-    this.cb.onMessage("Reloaded");
+    this.reloading = this.reloadDuration;
+    this.cb.onMessage("Reloading...");
+    // Refill ammo at end of animation (handled in updatePlayer)
   }
   public attack() {
     this.sound.init();
@@ -960,6 +962,7 @@ export class ForestHorrorGame {
 
   private tryAttack() {
     if (this.fireCd > 0) return;
+    if (this.reloading > 0) return;
     if (this.weapon === "gun") {
       if (this.ammo <= 0) {
         this.cb.onMessage("Out of ammo! Press R");
