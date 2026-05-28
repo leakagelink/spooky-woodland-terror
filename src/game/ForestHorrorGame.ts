@@ -1213,11 +1213,21 @@ export class ForestHorrorGame {
         }
       }
 
-      // Periodic growl/whisper if close enough
-      if (dist < 18 && t - e.lastGrowl > 3 + Math.random() * 4) {
+      // Periodic growl/whisper — positional 3D audio relative to player facing
+      if (dist < 22 && t - e.lastGrowl > 3 + Math.random() * 4) {
         e.lastGrowl = t;
-        if (e.type === "zombie") this.sound.zombieGrowl();
-        else this.sound.ghostWhisper();
+        // Convert world offset → player-local (yaw-rotated) so left/right pan matches view
+        const wx = e.mesh.position.x - this.pos.x;
+        const wz = e.mesh.position.z - this.pos.z;
+        const cosY = Math.cos(-this.yaw);
+        const sinY = Math.sin(-this.yaw);
+        const lx = wx * cosY - wz * sinY;
+        const lz = wx * sinY + wz * cosY;
+        if (e.type === "zombie" || e.type === "giant_ent" || e.type === "fallen_angel") {
+          this.sound.zombieGrowl(lx, lz);
+        } else {
+          this.sound.ghostWhisper(lx, lz);
+        }
       }
 
       e.attackCd -= dt;
