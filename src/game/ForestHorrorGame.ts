@@ -21,6 +21,13 @@ type Enemy = {
   hitFlash: number;
   origMats: Map<THREE.Mesh, THREE.Material | THREE.Material[]>;
   lastGrowl: number;
+  limbs?: {
+    armL: THREE.Object3D; armR: THREE.Object3D;
+    legL: THREE.Object3D; legR: THREE.Object3D;
+    head: THREE.Object3D; torso: THREE.Object3D;
+    jaw?: THREE.Object3D;
+  };
+  phase: number;
 };
 
 export class ForestHorrorGame {
