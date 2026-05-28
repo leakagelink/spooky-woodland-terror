@@ -109,6 +109,16 @@ export class ForestHorrorGame {
   private fallenAngelAnimations: THREE.AnimationClip[] = [];
   private angelSpawned = false;
 
+  // Post-processing
+  private composer!: EffectComposer;
+  private bloomPass!: UnrealBloomPass;
+  private grainPass!: ShaderPass;
+
+  // Reload state
+  private reloading = 0; // seconds remaining; 0 = not reloading
+  private readonly reloadDuration = 1.6;
+  private magMesh!: THREE.Mesh;
+
   constructor(container: HTMLElement, cb: GameCallbacks) {
     this.container = container;
     this.cb = cb;
