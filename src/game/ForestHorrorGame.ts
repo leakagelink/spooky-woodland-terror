@@ -1292,7 +1292,7 @@ export class ForestHorrorGame {
 
   private loop = () => {
     if (!this.running) {
-      this.renderer.render(this.scene, this.camera);
+      this.composer.render();
       return;
     }
     this.raf = requestAnimationFrame(this.loop);
@@ -1305,11 +1305,9 @@ export class ForestHorrorGame {
       this.spawnTimer = 4.5;
     }
 
-    // Boss: spawn giant ent after 5 kills, only one at a time
     if (!this.giantSpawned && this.kills >= 5 && this.giantEntTemplate) {
       this.spawnGiantEnt();
     }
-    // Boss: spawn fallen angel after 12 kills (12x powerful)
     if (!this.angelSpawned && this.kills >= 12 && this.fallenAngelTemplate) {
       this.spawnFallenAngel();
     }
@@ -1317,8 +1315,25 @@ export class ForestHorrorGame {
     this.updatePlayer(dt);
     this.updateEnemies(dt);
     this.updateWeather(dt);
-    this.renderer.render(this.scene, this.camera);
+
+    // Post-processing uniforms — damage flash + grain animation
+    if (this.grainPass) {
+      const u = this.grainPass.uniforms;
+      u.uTime.value = this.clock.getElapsedTime();
+      // Damage overlay scales with missing HP
+      const dmgT = Math.max(0, 1 - this.hp / 100);
+      u.uDamage.value = THREE.MathUtils.lerp(u.uDamage.value as number, dmgT * 0.6, 0.1);
+    }
+    if (this.bloomPass) {
+      // Pulse bloom on muzzle/lightning
+      const boost = this.muzzleFlash > 0 ? 0.4 : 0;
+      const ltn = this.lightningFlash > 0 ? this.lightningFlash * 0.6 : 0;
+      this.bloomPass.strength = 0.55 + boost + ltn;
+    }
+
+    this.composer.render();
   };
+
 
   public dispose() {
     this.running = false;
