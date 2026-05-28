@@ -969,6 +969,7 @@ export class ForestHorrorGame {
       isFbxModel: true,
       damage,
       scoreValue,
+      knockback,
     });
   }
 
