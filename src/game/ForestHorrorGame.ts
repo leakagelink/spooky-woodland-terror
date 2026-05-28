@@ -16,7 +16,7 @@ export type GameCallbacks = {
 
 type Enemy = {
   mesh: THREE.Object3D;
-  type: "zombie" | "ghost" | "giant_ent";
+  type: "zombie" | "ghost" | "giant_ent" | "fallen_angel";
   hp: number;
   speed: number;
   attackCd: number;
