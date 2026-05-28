@@ -77,6 +77,9 @@ type Enemy = {
   attackRange?: number;
   damage?: number;
   scoreValue?: number;
+  slowT?: number;
+  burnT?: number;
+  knockback?: number;
 };
 
 type Pickup = {
