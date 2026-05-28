@@ -114,6 +114,7 @@ export class ForestHorrorGame {
     this.buildPlayerWeapons();
     this.bindInput();
     this.loadZombieModel();
+    this.loadForestAssets();
 
     window.addEventListener("resize", this.onResize);
     this.loop();
