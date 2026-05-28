@@ -762,6 +762,82 @@ export class ForestHorrorGame {
     this.shake = Math.max(this.shake, 0.6);
   }
 
+  private spawnFallenAngel() {
+    if (!this.fallenAngelTemplate) return;
+    if (this.angelSpawned) return;
+
+    const enemy = new THREE.Group();
+    const model = SkeletonUtils.clone(this.fallenAngelTemplate) as THREE.Group;
+
+    model.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh && m.material) {
+        const mat = (m.material as THREE.MeshStandardMaterial).clone();
+        // Corrupted celestial tone - pale armor with crimson glow
+        mat.color.setHex(0x9a8870);
+        mat.emissive = new THREE.Color(0x550011);
+        mat.emissiveIntensity = 0.55;
+        m.material = mat;
+        m.castShadow = true;
+      }
+    });
+    enemy.add(model);
+
+    let mixer: THREE.AnimationMixer | undefined;
+    if (this.fallenAngelAnimations.length > 0) {
+      mixer = new THREE.AnimationMixer(model);
+      const action = mixer.clipAction(this.fallenAngelAnimations[0]);
+      action.timeScale = 1.0;
+      action.play();
+    }
+
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 30 + Math.random() * 15;
+    enemy.position.set(
+      this.pos.x + Math.cos(angle) * dist,
+      0,
+      this.pos.z + Math.sin(angle) * dist,
+    );
+
+    // Crimson holy/unholy glow
+    const glow = new THREE.PointLight(0xff2244, 4, 20, 2);
+    glow.position.y = 2.5;
+    enemy.add(glow);
+
+    this.scene.add(enemy);
+
+    const origMats = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+    enemy.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) origMats.set(m, m.material);
+    });
+
+    this.enemies.push({
+      mesh: enemy,
+      type: "fallen_angel",
+      hp: 720, // 12x normal zombie (60)
+      speed: 2.6, // fast & relentless
+      attackCd: 0,
+      alive: true,
+      hitFlash: 0,
+      origMats,
+      lastGrowl: 0,
+      phase: Math.random() * Math.PI * 2,
+      mixer,
+      isFbxModel: true,
+      isGiant: true,
+      attackRange: 3.0,
+      damage: 144, // 12x normal zombie (12)
+    });
+
+    this.angelSpawned = true;
+    this.cb.onMessage("⚔ A FALLEN ANGEL DESCENDS ⚔");
+    this.sound.thunder();
+    this.shake = Math.max(this.shake, 0.7);
+  }
+
+
+
 
 
   private bindInput() {
