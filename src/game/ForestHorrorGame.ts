@@ -7,6 +7,8 @@ export type GameCallbacks = {
   onKills: (kills: number) => void;
   onMessage: (msg: string) => void;
   onDeath: () => void;
+  onDamage: () => void;
+  onLightning: () => void;
 };
 
 type Enemy = {
