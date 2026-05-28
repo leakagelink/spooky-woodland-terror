@@ -151,6 +151,7 @@ export class ForestHorrorGame {
     this.buildWorld();
     this.buildPlayerWeapons();
     this.bindInput();
+    this.setupPostProcessing();
     this.loadZombieModel();
     this.loadGiantEntModel();
     this.loadFallenAngelModel();
