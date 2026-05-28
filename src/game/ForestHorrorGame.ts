@@ -155,9 +155,8 @@ export class ForestHorrorGame {
     this.loadZombieModel();
     this.loadGiantEntModel();
     this.loadFallenAngelModel();
-    // Forest GLB uses spec-gloss extension (not supported) → renders white.
-    // Skip it and rely on PBR-textured procedural trees in buildWorld().
-    // this.loadForestAssets();
+    // Load user-provided forest GLB (materials normalized to standard PBR)
+    this.loadForestAssets();
 
     window.addEventListener("resize", this.onResize);
     this.loop();
@@ -312,18 +311,37 @@ export class ForestHorrorGame {
         gltf.scene.children.forEach((c) => prototypes.push(c));
         if (prototypes.length === 0) return;
 
-        // Ensure materials render correctly
+        // Convert any spec-gloss / unsupported materials to MeshStandardMaterial
+        // so they render with proper color instead of plain white.
         prototypes.forEach((p) => {
           p.traverse((o) => {
             const m = o as THREE.Mesh;
-            if (m.isMesh) {
-              m.castShadow = false;
-              m.receiveShadow = false;
-              const mat = m.material as THREE.MeshStandardMaterial;
-              if (mat && "roughness" in mat) {
-                mat.roughness = Math.min(1, (mat.roughness ?? 1) + 0.1);
+            if (!m.isMesh) return;
+            m.castShadow = false;
+            m.receiveShadow = true;
+            const oldMats = Array.isArray(m.material) ? m.material : [m.material];
+            const newMats = oldMats.map((om: any) => {
+              const map = om?.map ?? om?.diffuseMap ?? null;
+              const normalMap = om?.normalMap ?? null;
+              const color = om?.color ? om.color.clone() : new THREE.Color(0x6b8050);
+              // If material had no diffuse map AND was white, give it a foliage tint
+              if (!map && color.r > 0.9 && color.g > 0.9 && color.b > 0.9) {
+                color.setHex(0x5a7a3a);
               }
-            }
+              if (map) map.colorSpace = THREE.SRGBColorSpace;
+              const mat = new THREE.MeshStandardMaterial({
+                map,
+                normalMap,
+                color: map ? 0xffffff : color,
+                roughness: 0.92,
+                metalness: 0.0,
+                transparent: !!(om?.transparent || om?.alphaTest),
+                alphaTest: om?.alphaTest || (om?.transparent ? 0.3 : 0),
+                side: THREE.DoubleSide,
+              });
+              return mat;
+            });
+            m.material = Array.isArray(m.material) ? newMats : newMats[0];
           });
         });
 
@@ -635,6 +653,50 @@ export class ForestHorrorGame {
     this.gunMesh.position.set(0.13, -0.18, -0.4);
     this.gunMesh.rotation.set(-0.02, -0.08, 0.02);
     this.camera.add(this.gunMesh);
+
+    // Try to load the user-provided SCAR rifle. On success, replace the
+    // procedural geometry with the real model (keeps mag for reload anim).
+    const gunLoader = new FBXLoader();
+    gunLoader.load(
+      "/models/weapons/scar.fbx",
+      (fbx) => {
+        const texLoader = new THREE.TextureLoader();
+        const gunTex = texLoader.load("/models/weapons/gun_texture.png");
+        gunTex.colorSpace = THREE.SRGBColorSpace;
+        gunTex.flipY = false;
+
+        fbx.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) {
+            m.material = new THREE.MeshStandardMaterial({
+              map: gunTex,
+              color: 0xffffff,
+              metalness: 0.75,
+              roughness: 0.4,
+            });
+            m.castShadow = false;
+          }
+        });
+
+        // Normalize size to ~0.55 units long along Z
+        const box = new THREE.Box3().setFromObject(fbx);
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        const s = 0.55 / maxDim;
+        fbx.scale.setScalar(s);
+        fbx.rotation.set(0, Math.PI, 0);
+        fbx.position.set(0, 0, 0);
+
+        // Remove procedural parts but keep the magazine for reload animation
+        const toRemove = this.gunMesh.children.filter((c) => c !== this.magMesh);
+        toRemove.forEach((c) => this.gunMesh.remove(c));
+        this.gunMesh.add(fbx);
+      },
+      undefined,
+      (err) => {
+        console.warn("SCAR FBX failed to load, keeping procedural gun", err);
+      },
+    );
 
     // Knife
     this.knifeMesh = new THREE.Group();
