@@ -121,7 +121,15 @@ export class ForestHorrorGame {
 
   // Grenades
   private grenadeCount = 3;
-  private grenades: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number }[] = [];
+  private grenadeKind: GrenadeKind = "frag";
+  private grenades: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number; kind: GrenadeKind }[] = [];
+  private burnZones: BurnZone[] = [];
+
+  // Difficulty
+  private difficulty: Difficulty = "normal";
+  private dmgMul = 1; // multiplier for damage dealt to player
+  private spawnMul = 1; // multiplier on spawn pacing (lower=faster)
+
 
   // Input
   private keys: Record<string, boolean> = {};
