@@ -85,7 +85,7 @@ function Game() {
         onStamina: setStamina,
         onPause: setPaused,
         onMinimap: (d: MinimapData) => { minimapData.current = d; },
-      });
+      }, difficulty);
       gameInstance = game;
       gameRef.current = game;
     });
