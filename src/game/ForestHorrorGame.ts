@@ -1608,16 +1608,28 @@ export class ForestHorrorGame {
       this.pos.x *= 120 / r;
       this.pos.z *= 120 / r;
     }
-    this.pos.y = 1.7;
+    // Crouch lerp
+    const crouchTarget = this.crouching ? 1 : 0;
+    this.crouchT += (crouchTarget - this.crouchT) * Math.min(1, dt * 8);
+    this.pos.y = 1.7 - this.crouchT * 0.6;
     this.camera.position.copy(this.pos);
 
-    // Camera shake
+    // Camera shake (reduced while ADS)
     if (this.shake > 0) {
-      this.camera.position.x += (Math.random() - 0.5) * this.shake * 0.3;
-      this.camera.position.y += (Math.random() - 0.5) * this.shake * 0.3;
+      const shakeMul = this.adsing ? 0.35 : 1.0;
+      this.camera.position.x += (Math.random() - 0.5) * this.shake * 0.3 * shakeMul;
+      this.camera.position.y += (Math.random() - 0.5) * this.shake * 0.3 * shakeMul;
       this.shake -= dt * 1.5;
       if (this.shake < 0) this.shake = 0;
     }
+
+    // ADS — lerp FOV
+    const spec = WEAPON_SPECS[this.weapon];
+    const targetAdsT = this.adsing ? 1 : 0;
+    this.adsT += (targetAdsT - this.adsT) * Math.min(1, dt * (this.weapon === "sniper" ? 9 : 12));
+    const targetFov = this.adsing ? spec.adsFov : this.baseFov;
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1, dt * 12));
+    this.camera.updateProjectionMatrix();
 
     if (this.fireCd > 0) this.fireCd -= dt;
 
@@ -1633,31 +1645,38 @@ export class ForestHorrorGame {
     // Reload animation drives gun pose when active
     if (this.reloading > 0) {
       this.reloading -= dt;
-      const p = 1 - this.reloading / this.reloadDuration; // 0 -> 1
-      // Down/tilt during first half, return during second half
-      const dip = Math.sin(p * Math.PI); // 0 -> 1 -> 0
+      const dur = WEAPON_SPECS[this.weapon].reloadDur || this.reloadDuration;
+      const p = 1 - this.reloading / dur; // 0 -> 1
+      const dip = Math.sin(p * Math.PI);
       this.gunMesh.position.set(baseX, baseY - dip * 0.18, baseZ + dip * 0.05);
       this.gunMesh.rotation.set(
         gunBaseRotX + dip * 0.6,
         gunBaseRotY - dip * 0.3,
         gunBaseRotZ - dip * 0.15,
       );
-      // Magazine drops out in first 40%, snaps back in last 30%
-      if (p < 0.4) {
-        const mp = p / 0.4;
-        this.magMesh.position.y = -0.18 - mp * 0.5;
-        this.magMesh.rotation.x = mp * 0.5;
-      } else if (p > 0.7) {
-        const mp = (p - 0.7) / 0.3;
-        this.magMesh.position.y = -0.18 - (1 - mp) * 0.3;
-        this.magMesh.rotation.x = (1 - mp) * 0.3;
-      } else {
-        this.magMesh.position.y = -0.68;
-        this.magMesh.rotation.x = 0.5;
+      // Same dip for shotgun/sniper meshes
+      this.shotgunMesh.position.copy(this.gunMesh.position);
+      this.shotgunMesh.rotation.copy(this.gunMesh.rotation);
+      this.sniperMesh.position.copy(this.gunMesh.position);
+      this.sniperMesh.rotation.copy(this.gunMesh.rotation);
+      // Magazine drops only for rifle
+      if (this.weapon === "gun") {
+        if (p < 0.4) {
+          const mp = p / 0.4;
+          this.magMesh.position.y = -0.18 - mp * 0.5;
+          this.magMesh.rotation.x = mp * 0.5;
+        } else if (p > 0.7) {
+          const mp = (p - 0.7) / 0.3;
+          this.magMesh.position.y = -0.18 - (1 - mp) * 0.3;
+          this.magMesh.rotation.x = (1 - mp) * 0.3;
+        } else {
+          this.magMesh.position.y = -0.68;
+          this.magMesh.rotation.x = 0.5;
+        }
       }
       if (this.reloading <= 0) {
         this.reloading = 0;
-        this.ammo = 24;
+        this.ammo = WEAPON_SPECS[this.weapon].maxAmmo;
         this.cb.onAmmo(this.ammo, this.weapon);
         this.cb.onMessage("Reloaded");
         this.magMesh.position.set(0, -0.18, -0.08);
@@ -1665,6 +1684,7 @@ export class ForestHorrorGame {
       }
       this.muzzleLight.intensity = 0;
     } else if (this.muzzleFlash > 0) {
+
       this.muzzleLight.intensity = 12;
       this.muzzleFlash -= dt;
       const kick = this.muzzleFlash / 0.08; // 1 -> 0
