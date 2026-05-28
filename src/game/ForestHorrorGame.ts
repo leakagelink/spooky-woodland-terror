@@ -413,6 +413,7 @@ export class ForestHorrorGame {
     });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
     this.scene.add(ground);
 
     // Grass blade patches scattered around
