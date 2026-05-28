@@ -2067,7 +2067,7 @@ export class ForestHorrorGame {
 
     this.spawnTimer -= dt;
     const targetCount = Math.min(this.maxActiveZombies, 1 + Math.floor(this.kills / 4) + this.wave);
-    const spawnInterval = Math.max(1.6, 4.5 - this.wave * 0.3);
+    const spawnInterval = Math.max(1.0, (4.5 - this.wave * 0.3) * this.spawnMul);
     if (this.spawnTimer <= 0 && this.enemies.length < targetCount) {
       this.spawnEnemy();
       this.spawnTimer = spawnInterval;
