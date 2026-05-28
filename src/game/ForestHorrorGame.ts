@@ -976,6 +976,10 @@ export class ForestHorrorGame {
       this.giantSpawned = false;
       this.cb.onMessage("🏆 GIANT ENT SLAIN!");
       this.shake = Math.max(this.shake, 0.8);
+    } else if (e.type === "fallen_angel") {
+      this.angelSpawned = false;
+      this.cb.onMessage("🏆 FALLEN ANGEL VANQUISHED!");
+      this.shake = Math.max(this.shake, 0.9);
     } else {
       this.cb.onMessage(e.type === "ghost" ? "Ghost banished!" : "Zombie down!");
     }
