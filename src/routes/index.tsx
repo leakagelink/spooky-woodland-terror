@@ -47,6 +47,8 @@ function Game() {
   const [paused, setPaused] = useState(false);
   const [grenades, setGrenades] = useState(3);
   const [ads, setAds] = useState(false);
+  const [grenadeKind, setGrenadeKind] = useState<GrenadeKind>("frag");
+  const [difficulty, setDifficulty] = useState<Difficulty>("normal");
 
   useEffect(() => {
     if (!started || !containerRef.current) return;
