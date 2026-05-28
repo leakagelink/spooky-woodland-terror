@@ -1193,18 +1193,135 @@ export class ForestHorrorGame {
     this.scene.remove(e.mesh);
     this.kills++;
     this.cb.onKills(this.kills);
+
+    // Score
+    let pts = e.scoreValue ?? 100;
+    if (e.type === "giant_ent") pts = 2500;
+    else if (e.type === "fallen_angel") pts = 3500;
+    this.score += pts;
+    if (this.score > this.highScore) {
+      this.highScore = this.score;
+      try { localStorage.setItem("darkforest_highscore", String(this.highScore)); } catch {}
+    }
+    this.cb.onScore?.(this.score, this.highScore);
+
+    // Pickup drop chance (only on regular zombies)
+    if (e.type === "zombie") {
+      const r = Math.random();
+      const dropChance = this.hp < 50 ? 0.55 : 0.35;
+      if (r < dropChance) {
+        const kind: "medkit" | "ammo" =
+          this.hp < 60 && Math.random() < 0.55 ? "medkit" : "ammo";
+        this.spawnPickup(e.mesh.position.x, e.mesh.position.z, kind);
+      }
+    } else if (e.type === "giant_ent" || e.type === "fallen_angel") {
+      // Boss always drops both
+      this.spawnPickup(e.mesh.position.x + 1, e.mesh.position.z, "medkit");
+      this.spawnPickup(e.mesh.position.x - 1, e.mesh.position.z, "ammo");
+    }
+
+    // Wave tracking
+    this.waveKills++;
+    if (this.waveKills >= this.killsPerWave) {
+      this.waveKills = 0;
+      this.wave++;
+      this.maxActiveZombies = Math.min(8, 3 + Math.floor(this.wave / 2));
+      this.cb.onWave?.(this.wave);
+      this.cb.onMessage(`⚔ WAVE ${this.wave} ⚔`);
+      this.sound.thunder();
+    }
+
     if (e.type === "giant_ent") {
       this.giantSpawned = false;
-      this.cb.onMessage("🏆 GIANT ENT SLAIN!");
+      this.cb.onMessage("🏆 GIANT ENT SLAIN! +2500");
       this.shake = Math.max(this.shake, 0.8);
     } else if (e.type === "fallen_angel") {
       this.angelSpawned = false;
-      this.cb.onMessage("🏆 FALLEN ANGEL VANQUISHED!");
+      this.cb.onMessage("🏆 FALLEN ANGEL VANQUISHED! +3500");
       this.shake = Math.max(this.shake, 0.9);
     } else {
-      this.cb.onMessage(e.type === "ghost" ? "Ghost banished!" : "Zombie down!");
+      const tag = e.variant === "runner" ? "Runner down!" : e.variant === "tank" ? "Tank down!" : "Zombie down!";
+      this.cb.onMessage(e.type === "ghost" ? "Ghost banished!" : tag);
     }
   }
+
+  private spawnPickup(x: number, z: number, kind: "medkit" | "ammo") {
+    const grp = new THREE.Group();
+    if (kind === "medkit") {
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.35, 0.5),
+        new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.6, emissive: 0x331111, emissiveIntensity: 0.3 }),
+      );
+      box.castShadow = true;
+      grp.add(box);
+      const cross1 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.36, 0.08, 0.08),
+        new THREE.MeshStandardMaterial({ color: 0xff2233, emissive: 0xff0000, emissiveIntensity: 0.7 }),
+      );
+      cross1.position.set(0, 0.2, 0);
+      grp.add(cross1);
+      const cross2 = cross1.clone();
+      cross2.rotation.y = Math.PI / 2;
+      grp.add(cross2);
+      const lt = new THREE.PointLight(0xff3344, 0.8, 4, 2);
+      lt.position.y = 0.6;
+      grp.add(lt);
+    } else {
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(0.55, 0.3, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x3a4a25, roughness: 0.8, emissive: 0x111100, emissiveIntensity: 0.2 }),
+      );
+      box.castShadow = true;
+      grp.add(box);
+      const label = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 0.18, 0.02),
+        new THREE.MeshStandardMaterial({ color: 0xffcc33, emissive: 0xffaa00, emissiveIntensity: 0.6 }),
+      );
+      label.position.set(0, 0, 0.21);
+      grp.add(label);
+      const lt = new THREE.PointLight(0xffaa33, 0.7, 4, 2);
+      lt.position.y = 0.6;
+      grp.add(lt);
+    }
+    grp.position.set(x, 0.4, z);
+    this.scene.add(grp);
+    this.pickups.push({
+      mesh: grp,
+      kind,
+      pos: grp.position,
+      bob: Math.random() * Math.PI * 2,
+      alive: true,
+    });
+  }
+
+  private updatePickups(dt: number) {
+    const t = this.clock.getElapsedTime();
+    for (const p of this.pickups) {
+      if (!p.alive) continue;
+      p.mesh.position.y = 0.4 + Math.sin(t * 2.5 + p.bob) * 0.12;
+      p.mesh.rotation.y += dt * 1.2;
+      const dx = p.pos.x - this.pos.x;
+      const dz = p.pos.z - this.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 1.6) {
+        if (p.kind === "medkit") {
+          this.hp = Math.min(100, this.hp + 30);
+          this.cb.onHealth(this.hp);
+          this.cb.onMessage("+30 HP");
+        } else {
+          this.ammo = Math.min(24, this.ammo + 12);
+          this.cb.onAmmo(this.ammo, this.weapon);
+          this.cb.onMessage("+12 Ammo");
+        }
+        this.sound.init();
+        this.sound.reload();
+        p.alive = false;
+        this.scene.remove(p.mesh);
+      }
+    }
+    this.pickups = this.pickups.filter((p) => p.alive);
+  }
+
 
   private updatePlayer(dt: number) {
     this.camera.rotation.order = "YXZ";
