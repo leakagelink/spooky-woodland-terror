@@ -1663,11 +1663,17 @@ export class ForestHorrorGame {
     this.raf = requestAnimationFrame(this.loop);
     const dt = Math.min(0.05, this.clock.getDelta());
 
+    if (this.paused) {
+      this.composer.render();
+      return;
+    }
+
     this.spawnTimer -= dt;
-    const targetCount = Math.min(this.maxActiveZombies, 1 + Math.floor(this.kills / 6));
+    const targetCount = Math.min(this.maxActiveZombies, 1 + Math.floor(this.kills / 4) + this.wave);
+    const spawnInterval = Math.max(1.6, 4.5 - this.wave * 0.3);
     if (this.spawnTimer <= 0 && this.enemies.length < targetCount) {
       this.spawnEnemy();
-      this.spawnTimer = 4.5;
+      this.spawnTimer = spawnInterval;
     }
 
     if (!this.giantSpawned && this.kills >= 5 && this.giantEntTemplate) {
@@ -1679,18 +1685,42 @@ export class ForestHorrorGame {
 
     this.updatePlayer(dt);
     this.updateEnemies(dt);
+    this.updatePickups(dt);
     this.updateWeather(dt);
 
-    // Post-processing uniforms — damage flash + grain animation
+    // Minimap broadcast (throttled ~10Hz)
+    this.minimapCd -= dt;
+    if (this.minimapCd <= 0 && this.cb.onMinimap) {
+      this.minimapCd = 0.1;
+      this.cb.onMinimap({
+        px: this.pos.x,
+        pz: this.pos.z,
+        yaw: this.yaw,
+        enemies: this.enemies
+          .filter((e) => e.alive)
+          .map((e) => ({
+            x: e.mesh.position.x,
+            z: e.mesh.position.z,
+            kind: e.type === "giant_ent" || e.type === "fallen_angel"
+              ? "boss"
+              : e.variant === "runner" ? "runner"
+              : e.variant === "tank" ? "tank"
+              : "zombie",
+          })),
+        pickups: this.pickups
+          .filter((p) => p.alive)
+          .map((p) => ({ x: p.pos.x, z: p.pos.z, kind: p.kind })),
+      });
+    }
+
+    // Post-processing uniforms
     if (this.grainPass) {
       const u = this.grainPass.uniforms;
       u.uTime.value = this.clock.getElapsedTime();
-      // Damage overlay scales with missing HP
       const dmgT = Math.max(0, 1 - this.hp / 100);
       u.uDamage.value = THREE.MathUtils.lerp(u.uDamage.value as number, dmgT * 0.6, 0.1);
     }
     if (this.bloomPass) {
-      // Pulse bloom on muzzle/lightning
       const boost = this.muzzleFlash > 0 ? 0.4 : 0;
       const ltn = this.lightningFlash > 0 ? this.lightningFlash * 0.6 : 0;
       this.bloomPass.strength = 0.35 + boost + ltn;
@@ -1698,6 +1728,7 @@ export class ForestHorrorGame {
 
     this.composer.render();
   };
+
 
 
   public dispose() {
