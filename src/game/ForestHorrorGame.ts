@@ -132,12 +132,12 @@ export class ForestHorrorGame {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.35;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x05070a);
-    this.fog = new THREE.FogExp2(0x0a1015, 0.025);
+    this.scene.background = new THREE.Color(0x87CEEB);
+    this.fog = new THREE.FogExp2(0xc8e0c8, 0.012);
     this.scene.fog = this.fog;
 
     this.camera = new THREE.PerspectiveCamera(
@@ -360,27 +360,27 @@ export class ForestHorrorGame {
   }
 
   private buildWorld() {
-    // Ambient — brighter so player can see scene
-    this.ambient = new THREE.AmbientLight(0x4a5a70, 1.1);
+    // Ambient — bright daylight
+    this.ambient = new THREE.AmbientLight(0x9ab8d0, 1.6);
     this.scene.add(this.ambient);
 
-    // Moonlight — primary shadow caster
-    const moon = new THREE.DirectionalLight(0x8aa6cc, 0.9);
-    moon.position.set(20, 40, 10);
-    moon.castShadow = true;
-    moon.shadow.mapSize.set(1024, 1024);
-    moon.shadow.camera.near = 1;
-    moon.shadow.camera.far = 120;
-    moon.shadow.camera.left = -60;
-    moon.shadow.camera.right = 60;
-    moon.shadow.camera.top = 60;
-    moon.shadow.camera.bottom = -60;
-    moon.shadow.bias = -0.0008;
-    moon.shadow.normalBias = 0.04;
-    this.scene.add(moon);
+    // Sunlight — primary shadow caster
+    const sun = new THREE.DirectionalLight(0xfff5d1, 1.8);
+    sun.position.set(20, 45, 10);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 120;
+    sun.shadow.camera.left = -60;
+    sun.shadow.camera.right = 60;
+    sun.shadow.camera.top = 60;
+    sun.shadow.camera.bottom = -60;
+    sun.shadow.bias = -0.0008;
+    sun.shadow.normalBias = 0.04;
+    this.scene.add(sun);
 
-    // Hemisphere for sky/ground tint
-    const hemi = new THREE.HemisphereLight(0x223344, 0x0a0f08, 0.6);
+    // Hemisphere for sky/ground tint (daytime)
+    const hemi = new THREE.HemisphereLight(0x87CEEB, 0x4a7a3a, 0.9);
     this.scene.add(hemi);
 
     // Texture loader for PBR forest assets
@@ -512,8 +512,8 @@ export class ForestHorrorGame {
       this.scene.add(rock);
     }
 
-    // Flashlight attached to camera (no shadows for mobile perf)
-    this.flashlight = new THREE.SpotLight(0xfff0c0, 60, 45, Math.PI / 6, 0.5, 1.2);
+    // Flashlight attached to camera — dimmer in daytime (more of a tactical light)
+    this.flashlight = new THREE.SpotLight(0xfff0c0, 20, 45, Math.PI / 6, 0.5, 1.2);
     this.camera.add(this.flashlight);
     this.flashlight.position.set(0.3, -0.2, 0);
     const target = new THREE.Object3D();
@@ -539,10 +539,10 @@ export class ForestHorrorGame {
     const rainGeo = new THREE.BufferGeometry();
     rainGeo.setAttribute("position", new THREE.BufferAttribute(this.rainPositions, 3));
     const rainMat = new THREE.PointsMaterial({
-      color: 0xaaccee,
-      size: 0.08,
+      color: 0xccddff,
+      size: 0.06,
       transparent: true,
-      opacity: 0.55,
+      opacity: 0.35,
       depthWrite: false,
     });
     this.rain = new THREE.Points(rainGeo, rainMat);
@@ -936,7 +936,7 @@ export class ForestHorrorGame {
   }
   public toggleFlashlight() {
     this.flashlightOn = !this.flashlightOn;
-    this.flashlight.intensity = this.flashlightOn ? 60 : 0;
+    this.flashlight.intensity = this.flashlightOn ? 20 : 0;
     this.cb.onMessage(this.flashlightOn ? "Flashlight ON" : "Flashlight OFF");
   }
   public setWeapon(w: "gun" | "knife") {
@@ -1285,8 +1285,8 @@ export class ForestHorrorGame {
       uniforms: {
         tDiffuse: { value: null as THREE.Texture | null },
         uTime: { value: 0 },
-        uVignette: { value: 1.1 },
-        uGrain: { value: 0.06 },
+        uVignette: { value: 0.65 },
+        uGrain: { value: 0.035 },
         uDamage: { value: 0 },
       },
       vertexShader: `
@@ -1354,10 +1354,10 @@ export class ForestHorrorGame {
     }
     if (this.lightningFlash > 0) {
       this.lightningFlash -= dt;
-      const intensity = Math.max(0, this.lightningFlash) * 4;
-      this.ambient.intensity = 1.1 + intensity;
+      const intensity = Math.max(0, this.lightningFlash) * 3;
+      this.ambient.intensity = 1.6 + intensity;
     } else {
-      this.ambient.intensity = 1.1;
+      this.ambient.intensity = 1.6;
     }
   }
 
@@ -1399,7 +1399,7 @@ export class ForestHorrorGame {
       // Pulse bloom on muzzle/lightning
       const boost = this.muzzleFlash > 0 ? 0.4 : 0;
       const ltn = this.lightningFlash > 0 ? this.lightningFlash * 0.6 : 0;
-      this.bloomPass.strength = 0.55 + boost + ltn;
+      this.bloomPass.strength = 0.35 + boost + ltn;
     }
 
     this.composer.render();
