@@ -416,6 +416,58 @@ export class ForestHorrorGame {
       enemy.add(glow);
 
       limbs = { armL, armR, legL: armL, legR: armR, head, torso: head, jaw };
+    } else if (this.zombieTemplate) {
+      // ===== FBX ZOMBIE MODEL with baked animation =====
+      const model = SkeletonUtils.clone(this.zombieTemplate) as THREE.Group;
+      // Tint each clone slightly differently for variety
+      const tint = new THREE.Color().setHSL(0.25 + Math.random() * 0.08, 0.3 + Math.random() * 0.2, 0.32 + Math.random() * 0.1);
+      model.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh && m.material) {
+          const mat = (m.material as THREE.MeshStandardMaterial).clone();
+          mat.color.copy(tint);
+          m.material = mat;
+          m.castShadow = true;
+        }
+      });
+      enemy.add(model);
+
+      // Setup animation mixer with first available clip (usually walk/idle)
+      let mixer: THREE.AnimationMixer | undefined;
+      if (this.zombieAnimations.length > 0) {
+        mixer = new THREE.AnimationMixer(model);
+        const clip = this.zombieAnimations[0];
+        const action = mixer.clipAction(clip);
+        action.timeScale = 1 + Math.random() * 0.3;
+        action.play();
+      }
+
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 20 + Math.random() * 25;
+      enemy.position.set(this.pos.x + Math.cos(angle) * dist, 0, this.pos.z + Math.sin(angle) * dist);
+      this.scene.add(enemy);
+
+      const origMats = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+      enemy.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) origMats.set(m, m.material);
+      });
+
+      this.enemies.push({
+        mesh: enemy,
+        type: "zombie",
+        hp: 60,
+        speed: 1.6,
+        attackCd: 0,
+        alive: true,
+        hitFlash: 0,
+        origMats,
+        lastGrowl: 0,
+        phase: Math.random() * Math.PI * 2,
+        mixer,
+        isFbxModel: true,
+      });
+      return;
     } else {
       // ===== ROTTING ZOMBIE: detailed humanoid with limb pivots =====
       const skinMat = new THREE.MeshStandardMaterial({
