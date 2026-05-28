@@ -14,7 +14,7 @@ export type GameCallbacks = {
 };
 
 type Enemy = {
-  mesh: THREE.Group;
+  mesh: THREE.Object3D;
   type: "zombie" | "ghost";
   hp: number;
   speed: number;
@@ -30,6 +30,8 @@ type Enemy = {
     jaw?: THREE.Object3D;
   };
   phase: number;
+  mixer?: THREE.AnimationMixer;
+  isFbxModel?: boolean;
 };
 
 export class ForestHorrorGame {
