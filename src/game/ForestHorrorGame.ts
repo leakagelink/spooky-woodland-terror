@@ -78,11 +78,22 @@ export class ForestHorrorGame {
   private vel = new THREE.Vector3();
   private hp = 100;
   private kills = 0;
-  private weapon: "gun" | "knife" = "gun";
+  private weapon: WeaponKind = "gun";
   private ammo = 24;
   private fireCd = 0;
   private flashlightOn = true;
   private muzzleFlash = 0;
+
+  // ADS + crouch
+  private adsing = false;
+  private adsT = 0; // 0 = hip, 1 = ADS
+  private baseFov = 75;
+  private crouching = false;
+  private crouchT = 0; // 0 = stand, 1 = crouch
+
+  // Grenades
+  private grenadeCount = 3;
+  private grenades: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number }[] = [];
 
   // Input
   private keys: Record<string, boolean> = {};
@@ -99,7 +110,10 @@ export class ForestHorrorGame {
   private fog!: THREE.FogExp2;
   private muzzleLight!: THREE.PointLight;
   private gunMesh!: THREE.Group;
+  private shotgunMesh!: THREE.Group;
+  private sniperMesh!: THREE.Group;
   private knifeMesh!: THREE.Group;
+
 
   private running = true;
   private paused = false;
