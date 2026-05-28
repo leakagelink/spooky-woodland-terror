@@ -1079,6 +1079,11 @@ export class ForestHorrorGame {
       this.spawnTimer = 4.5;
     }
 
+    // Boss: spawn giant ent after 5 kills, only one at a time
+    if (!this.giantSpawned && this.kills >= 5 && this.giantEntTemplate) {
+      this.spawnGiantEnt();
+    }
+
     this.updatePlayer(dt);
     this.updateEnemies(dt);
     this.updateWeather(dt);
