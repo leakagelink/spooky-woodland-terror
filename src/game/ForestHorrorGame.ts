@@ -25,6 +25,28 @@ export type GameCallbacks = {
 
 type ZombieVariant = "normal" | "runner" | "tank";
 
+export type WeaponKind = "gun" | "shotgun" | "sniper" | "knife";
+
+type WeaponSpec = {
+  maxAmmo: number;
+  fireCd: number;
+  damage: number;
+  range: number;
+  pellets: number;
+  spread: number; // radians
+  reloadDur: number;
+  adsFov: number; // FOV when ADS-ing
+  hipSpread: number;
+};
+
+const WEAPON_SPECS: Record<WeaponKind, WeaponSpec> = {
+  gun:     { maxAmmo: 24, fireCd: 0.18, damage: 35, range: 70,  pellets: 1, spread: 0.012, reloadDur: 1.6, adsFov: 55, hipSpread: 0.025 },
+  shotgun: { maxAmmo: 6,  fireCd: 0.75, damage: 22, range: 30,  pellets: 8, spread: 0.14,  reloadDur: 2.2, adsFov: 62, hipSpread: 0.18 },
+  sniper:  { maxAmmo: 5,  fireCd: 1.2,  damage: 220, range: 180, pellets: 1, spread: 0.003, reloadDur: 2.4, adsFov: 18, hipSpread: 0.08 },
+  knife:   { maxAmmo: 0,  fireCd: 0.4,  damage: 45, range: 2.5, pellets: 1, spread: 0,      reloadDur: 0,   adsFov: 75, hipSpread: 0 },
+};
+
+
 type Enemy = {
   mesh: THREE.Object3D;
   type: "zombie" | "ghost" | "giant_ent" | "fallen_angel";
