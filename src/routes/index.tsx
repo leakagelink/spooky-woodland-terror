@@ -18,7 +18,7 @@ export const Route = createFileRoute("/")({
 
 function Game() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const gameRef = useRef<ForestHorrorGame | null>(null);
+  const gameRef = useRef<ForestHorrorGameType | null>(null);
   const [started, setStarted] = useState(false);
   const [hp, setHp] = useState(100);
   const [ammo, setAmmo] = useState(24);
