@@ -364,9 +364,19 @@ export class ForestHorrorGame {
     this.ambient = new THREE.AmbientLight(0x4a5a70, 1.1);
     this.scene.add(this.ambient);
 
-    // Moonlight
+    // Moonlight — primary shadow caster
     const moon = new THREE.DirectionalLight(0x8aa6cc, 0.9);
     moon.position.set(20, 40, 10);
+    moon.castShadow = true;
+    moon.shadow.mapSize.set(1024, 1024);
+    moon.shadow.camera.near = 1;
+    moon.shadow.camera.far = 120;
+    moon.shadow.camera.left = -60;
+    moon.shadow.camera.right = 60;
+    moon.shadow.camera.top = 60;
+    moon.shadow.camera.bottom = -60;
+    moon.shadow.bias = -0.0008;
+    moon.shadow.normalBias = 0.04;
     this.scene.add(moon);
 
     // Hemisphere for sky/ground tint
