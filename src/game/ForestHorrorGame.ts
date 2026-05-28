@@ -1121,14 +1121,21 @@ export class ForestHorrorGame {
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
 
-    canvas.addEventListener("click", () => {
+    canvas.addEventListener("mousedown", (e) => {
       if (document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
-      this.attack();
+      if (e.button === 0) this.attack();
+      if (e.button === 2) this.setAds(true);
     });
+    canvas.addEventListener("mouseup", (e) => {
+      if (e.button === 2) this.setAds(false);
+    });
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     document.addEventListener("mousemove", (e) => {
       if (document.pointerLockElement === canvas) {
-        this.yaw -= e.movementX * 0.0025;
-        this.pitch -= e.movementY * 0.0025;
+        // ADS reduces mouse sensitivity (steadier aim)
+        const sens = this.adsing ? 0.0011 : 0.0025;
+        this.yaw -= e.movementX * sens;
+        this.pitch -= e.movementY * sens;
         this.pitch = Math.max(-1.2, Math.min(1.2, this.pitch));
       }
     });
@@ -1146,8 +1153,9 @@ export class ForestHorrorGame {
     canvas.addEventListener("touchmove", (e) => {
       if (!this.looking) return;
       const t = e.touches[e.touches.length - 1];
-      this.yaw -= (t.clientX - this.lastTouchX) * 0.005;
-      this.pitch -= (t.clientY - this.lastTouchY) * 0.005;
+      const sens = this.adsing ? 0.0022 : 0.005;
+      this.yaw -= (t.clientX - this.lastTouchX) * sens;
+      this.pitch -= (t.clientY - this.lastTouchY) * sens;
       this.pitch = Math.max(-1.2, Math.min(1.2, this.pitch));
       this.lastTouchX = t.clientX;
       this.lastTouchY = t.clientY;
@@ -1161,8 +1169,12 @@ export class ForestHorrorGame {
     this.keys[e.code] = true;
     if (e.code === "KeyF") this.toggleFlashlight();
     if (e.code === "Digit1") this.setWeapon("gun");
-    if (e.code === "Digit2") this.setWeapon("knife");
+    if (e.code === "Digit2") this.setWeapon("shotgun");
+    if (e.code === "Digit3") this.setWeapon("sniper");
+    if (e.code === "Digit4") this.setWeapon("knife");
     if (e.code === "KeyR") this.reload();
+    if (e.code === "KeyG") this.throwGrenade();
+    if (e.code === "KeyC") this.toggleCrouch();
     if (e.code === "Escape" || e.code === "KeyP") this.togglePause();
   };
   private onKeyUp = (e: KeyboardEvent) => {
@@ -1177,7 +1189,7 @@ export class ForestHorrorGame {
       if (document.pointerLockElement) document.exitPointerLock?.();
     } else {
       this.cb.onMessage("Resumed");
-      this.clock.getDelta(); // discard accumulated delta
+      this.clock.getDelta();
     }
   }
   public isPaused() { return this.paused; }
@@ -1191,21 +1203,39 @@ export class ForestHorrorGame {
     this.flashlight.intensity = this.flashlightOn ? 20 : 0;
     this.cb.onMessage(this.flashlightOn ? "Flashlight ON" : "Flashlight OFF");
   }
-  public setWeapon(w: "gun" | "knife") {
+  public setAds(on: boolean) {
+    if (this.weapon === "knife") { this.adsing = false; return; }
+    this.adsing = on;
+  }
+  public toggleAds() { this.setAds(!this.adsing); }
+  public isAds() { return this.adsing; }
+  public currentWeapon(): WeaponKind { return this.weapon; }
+  public toggleCrouch() {
+    this.crouching = !this.crouching;
+    this.cb.onMessage(this.crouching ? "Crouched" : "Standing");
+  }
+  public setWeapon(w: WeaponKind) {
     this.weapon = w;
     this.gunMesh.visible = w === "gun";
+    this.shotgunMesh.visible = w === "shotgun";
+    this.sniperMesh.visible = w === "sniper";
     this.knifeMesh.visible = w === "knife";
+    // Clamp ammo into new spec's mag
+    const spec = WEAPON_SPECS[w];
+    if (this.ammo > spec.maxAmmo) this.ammo = spec.maxAmmo;
+    if (w === "knife") this.adsing = false;
     this.cb.onAmmo(this.ammo, this.weapon);
+    this.cb.onMessage(`Equipped: ${w.toUpperCase()}`);
   }
   public reload() {
-    if (this.weapon !== "gun") return;
+    const spec = WEAPON_SPECS[this.weapon];
+    if (this.weapon === "knife") return;
     if (this.reloading > 0) return;
-    if (this.ammo >= 24) return;
+    if (this.ammo >= spec.maxAmmo) return;
     this.sound.init();
     this.sound.reload();
-    this.reloading = this.reloadDuration;
+    this.reloading = spec.reloadDur;
     this.cb.onMessage("Reloading...");
-    // Refill ammo at end of animation (handled in updatePlayer)
   }
   public attack() {
     this.sound.init();
@@ -1215,28 +1245,46 @@ export class ForestHorrorGame {
   private tryAttack() {
     if (this.fireCd > 0) return;
     if (this.reloading > 0) return;
-    if (this.weapon === "gun") {
-      if (this.ammo <= 0) {
-        this.cb.onMessage("Out of ammo! Press R");
-        return;
-      }
-      this.ammo--;
-      this.fireCd = 0.25;
-      this.muzzleFlash = 0.08;
-      this.shake = Math.max(this.shake, 0.25);
-      this.sound.shoot();
-      this.cb.onAmmo(this.ammo, this.weapon);
-      this.raycastHit(60, 35);
-    } else {
-      this.fireCd = 0.4;
+    const spec = WEAPON_SPECS[this.weapon];
+    if (this.weapon === "knife") {
+      this.fireCd = spec.fireCd;
       this.sound.knife();
-      this.raycastHit(2.5, 45);
+      this.raycastShot(spec.range, spec.damage, 0);
+      return;
+    }
+    if (this.ammo <= 0) {
+      this.cb.onMessage("Out of ammo! Press R");
+      return;
+    }
+    this.ammo--;
+    this.fireCd = spec.fireCd;
+    this.muzzleFlash = this.weapon === "sniper" ? 0.14 : this.weapon === "shotgun" ? 0.12 : 0.08;
+    const baseShake = this.weapon === "sniper" ? 0.7 : this.weapon === "shotgun" ? 0.55 : 0.25;
+    this.shake = Math.max(this.shake, this.adsing ? baseShake * 0.5 : baseShake);
+    this.sound.shoot();
+    this.cb.onAmmo(this.ammo, this.weapon);
+
+    // Spread: ADS uses tight spread, hip uses wider; crouch tightens 50%
+    let spread = this.adsing ? spec.spread : spec.hipSpread;
+    if (this.crouching) spread *= 0.5;
+
+    // Fire pellets (shotgun = 8, others = 1)
+    for (let i = 0; i < spec.pellets; i++) {
+      this.raycastShot(spec.range, spec.damage, spread);
     }
   }
 
-  private raycastHit(maxDist: number, damage: number) {
+  private raycastShot(maxDist: number, damage: number, spread: number) {
     const origin = this.camera.getWorldPosition(new THREE.Vector3());
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    if (spread > 0) {
+      // Random cone offset
+      const yawOff = (Math.random() - 0.5) * spread * 2;
+      const pitchOff = (Math.random() - 0.5) * spread * 2;
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
+      dir.addScaledVector(right, yawOff).addScaledVector(up, pitchOff).normalize();
+    }
     const ray = new THREE.Raycaster(origin, dir, 0, maxDist);
     let closest: { e: Enemy; d: number; hitPoint: THREE.Vector3; bone: string } | null = null;
     for (const e of this.enemies) {
@@ -1249,7 +1297,6 @@ export class ForestHorrorGame {
       }
     }
     if (closest) {
-      // Headshot detection — by bone name OR by Y position near top of enemy bbox
       const bbox = new THREE.Box3().setFromObject(closest.e.mesh);
       const headThreshold = bbox.min.y + (bbox.max.y - bbox.min.y) * 0.78;
       const isHeadByName = /head|skull|neck|cranium/.test(closest.bone);
@@ -1273,6 +1320,113 @@ export class ForestHorrorGame {
       }
     }
   }
+
+  public throwGrenade() {
+    if (this.grenadeCount <= 0) {
+      this.cb.onMessage("No grenades!");
+      return;
+    }
+    this.grenadeCount--;
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.12, 12, 10),
+      new THREE.MeshStandardMaterial({ color: 0x2a3a1c, roughness: 0.6, metalness: 0.4, emissive: 0x110000, emissiveIntensity: 0.4 }),
+    );
+    mesh.castShadow = true;
+    const origin = this.camera.getWorldPosition(new THREE.Vector3());
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    mesh.position.copy(origin).addScaledVector(dir, 0.5);
+    const vel = dir.clone().multiplyScalar(18).add(new THREE.Vector3(0, 4, 0));
+    this.scene.add(mesh);
+    this.grenades.push({ mesh, vel, t: 2.2 });
+    this.sound.init();
+    this.cb.onMessage(`Grenade thrown! (${this.grenadeCount} left)`);
+  }
+
+  private updateGrenades(dt: number) {
+    for (const g of this.grenades) {
+      if (g.t <= 0) continue;
+      g.t -= dt;
+      // Physics
+      g.vel.y -= 16 * dt;
+      g.mesh.position.addScaledVector(g.vel, dt);
+      g.mesh.rotation.x += dt * 6;
+      g.mesh.rotation.z += dt * 4;
+      // Floor bounce
+      if (g.mesh.position.y < 0.15) {
+        g.mesh.position.y = 0.15;
+        g.vel.y *= -0.4;
+        g.vel.x *= 0.7;
+        g.vel.z *= 0.7;
+      }
+      if (g.t <= 0) this.explodeGrenade(g);
+    }
+    this.grenades = this.grenades.filter((g) => g.t > 0);
+  }
+
+  private explodeGrenade(g: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number }) {
+    const pos = g.mesh.position.clone();
+    this.scene.remove(g.mesh);
+    g.t = -1;
+    this.sound.thunder();
+
+    // Bright flash light
+    const flash = new THREE.PointLight(0xffaa44, 30, 25, 2);
+    flash.position.copy(pos);
+    this.scene.add(flash);
+    let life = 0.3;
+    const fade = () => {
+      life -= 0.05;
+      flash.intensity = Math.max(0, life * 100);
+      if (life > 0) setTimeout(fade, 30);
+      else this.scene.remove(flash);
+    };
+    fade();
+
+    // Smoke/debris ring
+    const ringGeo = new THREE.RingGeometry(0.3, 0.5, 24);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffaa55, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.copy(pos);
+    ring.rotation.x = -Math.PI / 2;
+    this.scene.add(ring);
+    let rs = 1;
+    const grow = () => {
+      rs += 0.6;
+      ring.scale.setScalar(rs);
+      ringMat.opacity *= 0.85;
+      if (ringMat.opacity > 0.05) setTimeout(grow, 30);
+      else this.scene.remove(ring);
+    };
+    grow();
+
+    // Damage all enemies in radius
+    const radius = 6;
+    const baseDmg = 200;
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const d = e.mesh.position.distanceTo(pos);
+      if (d > radius) continue;
+      const falloff = 1 - d / radius;
+      const dmg = baseDmg * falloff;
+      e.hp -= dmg;
+      e.hitFlash = 0.2;
+      if (e.hp <= 0) this.killEnemy(e);
+    }
+    // Player damage if too close
+    const pd = pos.distanceTo(this.pos);
+    if (pd < radius) {
+      const selfDmg = (1 - pd / radius) * 80;
+      this.hp = Math.max(0, this.hp - selfDmg);
+      this.cb.onHealth(this.hp);
+      this.cb.onDamage();
+      if (this.hp <= 0) { this.cb.onDeath(); this.running = false; }
+    }
+    this.shake = Math.max(this.shake, Math.min(1.2, 1.2 * (1 - pd / 30)));
+  }
+
+  public getGrenades() { return this.grenadeCount; }
+
+
 
 
   private killEnemy(e: Enemy) {
