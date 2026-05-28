@@ -624,6 +624,14 @@ export class ForestHorrorGame {
     boxPart([0.05, 0.06, 0.035], [0, 0.15, -0.82], wornEdge);
     boxPart([0.025, 0.035, 0.08], [0.105, 0.03, -0.05], brass);
 
+    // Detachable magazine — animated during reload
+    this.magMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.11, 0.22, 0.09),
+      blackPolymer,
+    );
+    this.magMesh.position.set(0, -0.18, -0.08);
+    this.gunMesh.add(this.magMesh);
+
     this.gunMesh.position.set(0.13, -0.18, -0.4);
     this.gunMesh.rotation.set(-0.02, -0.08, 0.02);
     this.camera.add(this.gunMesh);
