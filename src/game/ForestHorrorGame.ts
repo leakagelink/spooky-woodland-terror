@@ -1215,6 +1215,10 @@ export class ForestHorrorGame {
     if (!this.giantSpawned && this.kills >= 5 && this.giantEntTemplate) {
       this.spawnGiantEnt();
     }
+    // Boss: spawn fallen angel after 12 kills (12x powerful)
+    if (!this.angelSpawned && this.kills >= 12 && this.fallenAngelTemplate) {
+      this.spawnFallenAngel();
+    }
 
     this.updatePlayer(dt);
     this.updateEnemies(dt);
