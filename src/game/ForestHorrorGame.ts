@@ -170,7 +170,65 @@ export class ForestHorrorGame {
     );
   }
 
+  private loadForestAssets() {
+    const loader = new GLTFLoader();
+    loader.load(
+      "/models/forest/coniferous_forest_assets_pack.glb",
+      (gltf) => {
+        // Collect top-level children as prototypes (trees, rocks, plants, etc.)
+        const prototypes: THREE.Object3D[] = [];
+        gltf.scene.children.forEach((c) => prototypes.push(c));
+        if (prototypes.length === 0) return;
+
+        // Ensure materials render correctly
+        prototypes.forEach((p) => {
+          p.traverse((o) => {
+            const m = o as THREE.Mesh;
+            if (m.isMesh) {
+              m.castShadow = false;
+              m.receiveShadow = false;
+              const mat = m.material as THREE.MeshStandardMaterial;
+              if (mat && "roughness" in mat) {
+                mat.roughness = Math.min(1, (mat.roughness ?? 1) + 0.1);
+              }
+            }
+          });
+        });
+
+        // Remove old procedural trees
+        this.trees.forEach((t) => this.scene.remove(t));
+        this.trees.length = 0;
+
+        // Scatter realistic instances
+        const count = 180;
+        for (let i = 0; i < count; i++) {
+          const proto = prototypes[Math.floor(Math.random() * prototypes.length)];
+          const inst = proto.clone(true);
+          // Normalize scale to ~5-10m tall depending on asset
+          const box = new THREE.Box3().setFromObject(inst);
+          const size = box.getSize(new THREE.Vector3());
+          const targetH = 5 + Math.random() * 6;
+          const s = size.y > 0.01 ? targetH / size.y : 1;
+          inst.scale.setScalar(s * (0.8 + Math.random() * 0.5));
+
+          const angle = Math.random() * Math.PI * 2;
+          const r = 8 + Math.random() * 110;
+          inst.position.set(Math.cos(angle) * r, 0, Math.sin(angle) * r);
+          inst.rotation.y = Math.random() * Math.PI * 2;
+
+          this.scene.add(inst);
+          this.trees.push(inst);
+        }
+      },
+      undefined,
+      (err) => {
+        console.warn("Failed to load forest GLB, keeping procedural trees", err);
+      }
+    );
+  }
+
   private buildWorld() {
+
     // Ambient — brighter so player can see scene
     this.ambient = new THREE.AmbientLight(0x4a5a70, 1.1);
     this.scene.add(this.ambient);
