@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import { SkeletonUtils } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { SoundEngine } from "./SoundEngine";
 
 export type GameCallbacks = {
