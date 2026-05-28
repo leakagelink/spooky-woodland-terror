@@ -1141,11 +1141,13 @@ export class ForestHorrorGame {
         this.cb.onHealth(Math.max(0, this.hp));
         this.cb.onDamage();
         this.cb.onMessage(
-          e.isGiant
-            ? "GIANT ENT SMASH!"
-            : e.type === "ghost"
-              ? "Ghost touched you!"
-              : "Zombie bite!",
+          e.type === "fallen_angel"
+            ? "ANGEL'S WRATH!"
+            : e.type === "giant_ent"
+              ? "GIANT ENT SMASH!"
+              : e.type === "ghost"
+                ? "Ghost touched you!"
+                : "Zombie bite!",
         );
         if (this.hp <= 0) {
           this.hp = 0;
