@@ -1079,7 +1079,41 @@ export class ForestHorrorGame {
       gunBaseRotY = -0.08,
       gunBaseRotZ = 0.02;
 
-    if (this.muzzleFlash > 0) {
+    // Reload animation drives gun pose when active
+    if (this.reloading > 0) {
+      this.reloading -= dt;
+      const p = 1 - this.reloading / this.reloadDuration; // 0 -> 1
+      // Down/tilt during first half, return during second half
+      const dip = Math.sin(p * Math.PI); // 0 -> 1 -> 0
+      this.gunMesh.position.set(baseX, baseY - dip * 0.18, baseZ + dip * 0.05);
+      this.gunMesh.rotation.set(
+        gunBaseRotX + dip * 0.6,
+        gunBaseRotY - dip * 0.3,
+        gunBaseRotZ - dip * 0.15,
+      );
+      // Magazine drops out in first 40%, snaps back in last 30%
+      if (p < 0.4) {
+        const mp = p / 0.4;
+        this.magMesh.position.y = -0.18 - mp * 0.5;
+        this.magMesh.rotation.x = mp * 0.5;
+      } else if (p > 0.7) {
+        const mp = (p - 0.7) / 0.3;
+        this.magMesh.position.y = -0.18 - (1 - mp) * 0.3;
+        this.magMesh.rotation.x = (1 - mp) * 0.3;
+      } else {
+        this.magMesh.position.y = -0.68;
+        this.magMesh.rotation.x = 0.5;
+      }
+      if (this.reloading <= 0) {
+        this.reloading = 0;
+        this.ammo = 24;
+        this.cb.onAmmo(this.ammo, this.weapon);
+        this.cb.onMessage("Reloaded");
+        this.magMesh.position.set(0, -0.18, -0.08);
+        this.magMesh.rotation.set(0, 0, 0);
+      }
+      this.muzzleLight.intensity = 0;
+    } else if (this.muzzleFlash > 0) {
       this.muzzleLight.intensity = 12;
       this.muzzleFlash -= dt;
       const kick = this.muzzleFlash / 0.08; // 1 -> 0
