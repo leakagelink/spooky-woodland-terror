@@ -16,11 +16,19 @@ export type GameCallbacks = {
   onDeath: () => void;
   onDamage: () => void;
   onLightning: () => void;
+  onWave?: (wave: number) => void;
+  onScore?: (score: number, high: number) => void;
+  onStamina?: (s: number) => void;
+  onPause?: (paused: boolean) => void;
+  onMinimap?: (data: { px: number; pz: number; yaw: number; enemies: { x: number; z: number; kind: string }[]; pickups: { x: number; z: number; kind: string }[] }) => void;
 };
+
+type ZombieVariant = "normal" | "runner" | "tank";
 
 type Enemy = {
   mesh: THREE.Object3D;
   type: "zombie" | "ghost" | "giant_ent" | "fallen_angel";
+  variant?: ZombieVariant;
   hp: number;
   speed: number;
   attackCd: number;
@@ -43,7 +51,17 @@ type Enemy = {
   isGiant?: boolean;
   attackRange?: number;
   damage?: number;
+  scoreValue?: number;
 };
+
+type Pickup = {
+  mesh: THREE.Object3D;
+  kind: "medkit" | "ammo";
+  pos: THREE.Vector3;
+  bob: number;
+  alive: boolean;
+};
+
 
 export class ForestHorrorGame {
   private renderer: THREE.WebGLRenderer;
@@ -84,9 +102,28 @@ export class ForestHorrorGame {
   private knifeMesh!: THREE.Group;
 
   private running = true;
+  private paused = false;
   private raf = 0;
   private spawnTimer = 0;
-  private readonly maxActiveZombies = 3;
+  private maxActiveZombies = 3;
+
+  // Wave + score
+  private wave = 1;
+  private waveKills = 0;
+  private readonly killsPerWave = 8;
+  private score = 0;
+  private highScore = 0;
+
+  // Stamina
+  private stamina = 100;
+  private sprinting = false;
+
+  // Pickups
+  private pickups: Pickup[] = [];
+
+  // Minimap throttle
+  private minimapCd = 0;
+
 
   // Realism systems
   private sound = new SoundEngine();
@@ -161,11 +198,21 @@ export class ForestHorrorGame {
     window.addEventListener("resize", this.onResize);
     this.loop();
 
+    // Load high score
+    try {
+      const hs = localStorage.getItem("darkforest_highscore");
+      if (hs) this.highScore = parseInt(hs, 10) || 0;
+    } catch {}
+
     this.cb.onHealth(this.hp);
     this.cb.onAmmo(this.ammo, this.weapon);
     this.cb.onKills(this.kills);
-    this.cb.onMessage("Loading zombies...");
+    this.cb.onMessage("Wave 1 — Survive...");
+    this.cb.onWave?.(this.wave);
+    this.cb.onScore?.(this.score, this.highScore);
+    this.cb.onStamina?.(this.stamina);
   }
+
 
   private loadZombieModel() {
     const loader = new FBXLoader();
@@ -721,41 +768,78 @@ export class ForestHorrorGame {
   }
 
   private spawnEnemy() {
-    // Only spawn realistic FBX zombies. Skip until the model is loaded.
     if (!this.zombieTemplate) return;
     if (this.enemies.length >= this.maxActiveZombies) return;
+
+    // Pick variant — chance increases with wave
+    let variant: ZombieVariant = "normal";
+    const roll = Math.random();
+    const runnerChance = Math.min(0.4, 0.1 + this.wave * 0.05);
+    const tankChance = Math.min(0.25, 0.05 + this.wave * 0.03);
+    if (roll < runnerChance) variant = "runner";
+    else if (roll < runnerChance + tankChance) variant = "tank";
 
     const enemy = new THREE.Group();
     const model = SkeletonUtils.clone(this.zombieTemplate) as THREE.Group;
 
-    // Tint each clone slightly differently for variety
-    const tint = new THREE.Color().setHSL(
-      0.25 + Math.random() * 0.08,
-      0.3 + Math.random() * 0.2,
-      0.32 + Math.random() * 0.1,
-    );
+    // Variant tint + scale
+    let tint: THREE.Color;
+    let scaleMul = 1;
+    let hp = 60;
+    let speed = 1.6;
+    let damage = 12;
+    let scoreValue = 100;
+    if (variant === "runner") {
+      tint = new THREE.Color(0x8a2a2a);
+      scaleMul = 0.9;
+      hp = 35;
+      speed = 3.2;
+      damage = 8;
+      scoreValue = 150;
+    } else if (variant === "tank") {
+      tint = new THREE.Color(0x2a3a1a);
+      scaleMul = 1.35;
+      hp = 180;
+      speed = 1.0;
+      damage = 22;
+      scoreValue = 300;
+    } else {
+      tint = new THREE.Color().setHSL(
+        0.25 + Math.random() * 0.08,
+        0.3 + Math.random() * 0.2,
+        0.32 + Math.random() * 0.1,
+      );
+    }
+    model.scale.multiplyScalar(scaleMul);
     model.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh && m.material) {
         const mat = (m.material as THREE.MeshStandardMaterial).clone();
         mat.color.copy(tint);
+        if (variant === "tank") {
+          mat.emissive = new THREE.Color(0x220011);
+          mat.emissiveIntensity = 0.25;
+        } else if (variant === "runner") {
+          mat.emissive = new THREE.Color(0x441100);
+          mat.emissiveIntensity = 0.35;
+        }
         m.material = mat;
         m.castShadow = true;
       }
     });
     enemy.add(model);
 
-    // Setup animation mixer with first available clip (usually walk/idle)
     let mixer: THREE.AnimationMixer | undefined;
     if (this.zombieAnimations.length > 0) {
       mixer = new THREE.AnimationMixer(model);
       const clip = this.zombieAnimations[0];
       const action = mixer.clipAction(clip);
-      action.timeScale = 1 + Math.random() * 0.3;
+      // Runners animate faster, tanks slower
+      const baseTs = variant === "runner" ? 1.8 : variant === "tank" ? 0.7 : 1;
+      action.timeScale = baseTs + Math.random() * 0.25;
       action.play();
     }
 
-    // Spawn around player at distance
     const angle = Math.random() * Math.PI * 2;
     const dist = 20 + Math.random() * 25;
     enemy.position.set(this.pos.x + Math.cos(angle) * dist, 0, this.pos.z + Math.sin(angle) * dist);
@@ -770,8 +854,9 @@ export class ForestHorrorGame {
     this.enemies.push({
       mesh: enemy,
       type: "zombie",
-      hp: 60,
-      speed: 1.6,
+      variant,
+      hp,
+      speed,
       attackCd: 0,
       alive: true,
       hitFlash: 0,
@@ -780,8 +865,11 @@ export class ForestHorrorGame {
       phase: Math.random() * Math.PI * 2,
       mixer,
       isFbxModel: true,
+      damage,
+      scoreValue,
     });
   }
+
 
   private spawnGiantEnt() {
     if (!this.giantEntTemplate) return;
@@ -988,10 +1076,25 @@ export class ForestHorrorGame {
     if (e.code === "Digit1") this.setWeapon("gun");
     if (e.code === "Digit2") this.setWeapon("knife");
     if (e.code === "KeyR") this.reload();
+    if (e.code === "Escape" || e.code === "KeyP") this.togglePause();
   };
   private onKeyUp = (e: KeyboardEvent) => {
     this.keys[e.code] = false;
   };
+
+  public togglePause() {
+    this.paused = !this.paused;
+    this.cb.onPause?.(this.paused);
+    if (this.paused) {
+      this.cb.onMessage("PAUSED");
+      if (document.pointerLockElement) document.exitPointerLock?.();
+    } else {
+      this.cb.onMessage("Resumed");
+      this.clock.getDelta(); // discard accumulated delta
+    }
+  }
+  public isPaused() { return this.paused; }
+
 
   public setMoveInput(x: number, y: number) {
     this.moveInput.set(x, y);
@@ -1090,18 +1193,135 @@ export class ForestHorrorGame {
     this.scene.remove(e.mesh);
     this.kills++;
     this.cb.onKills(this.kills);
+
+    // Score
+    let pts = e.scoreValue ?? 100;
+    if (e.type === "giant_ent") pts = 2500;
+    else if (e.type === "fallen_angel") pts = 3500;
+    this.score += pts;
+    if (this.score > this.highScore) {
+      this.highScore = this.score;
+      try { localStorage.setItem("darkforest_highscore", String(this.highScore)); } catch {}
+    }
+    this.cb.onScore?.(this.score, this.highScore);
+
+    // Pickup drop chance (only on regular zombies)
+    if (e.type === "zombie") {
+      const r = Math.random();
+      const dropChance = this.hp < 50 ? 0.55 : 0.35;
+      if (r < dropChance) {
+        const kind: "medkit" | "ammo" =
+          this.hp < 60 && Math.random() < 0.55 ? "medkit" : "ammo";
+        this.spawnPickup(e.mesh.position.x, e.mesh.position.z, kind);
+      }
+    } else if (e.type === "giant_ent" || e.type === "fallen_angel") {
+      // Boss always drops both
+      this.spawnPickup(e.mesh.position.x + 1, e.mesh.position.z, "medkit");
+      this.spawnPickup(e.mesh.position.x - 1, e.mesh.position.z, "ammo");
+    }
+
+    // Wave tracking
+    this.waveKills++;
+    if (this.waveKills >= this.killsPerWave) {
+      this.waveKills = 0;
+      this.wave++;
+      this.maxActiveZombies = Math.min(8, 3 + Math.floor(this.wave / 2));
+      this.cb.onWave?.(this.wave);
+      this.cb.onMessage(`⚔ WAVE ${this.wave} ⚔`);
+      this.sound.thunder();
+    }
+
     if (e.type === "giant_ent") {
       this.giantSpawned = false;
-      this.cb.onMessage("🏆 GIANT ENT SLAIN!");
+      this.cb.onMessage("🏆 GIANT ENT SLAIN! +2500");
       this.shake = Math.max(this.shake, 0.8);
     } else if (e.type === "fallen_angel") {
       this.angelSpawned = false;
-      this.cb.onMessage("🏆 FALLEN ANGEL VANQUISHED!");
+      this.cb.onMessage("🏆 FALLEN ANGEL VANQUISHED! +3500");
       this.shake = Math.max(this.shake, 0.9);
     } else {
-      this.cb.onMessage(e.type === "ghost" ? "Ghost banished!" : "Zombie down!");
+      const tag = e.variant === "runner" ? "Runner down!" : e.variant === "tank" ? "Tank down!" : "Zombie down!";
+      this.cb.onMessage(e.type === "ghost" ? "Ghost banished!" : tag);
     }
   }
+
+  private spawnPickup(x: number, z: number, kind: "medkit" | "ammo") {
+    const grp = new THREE.Group();
+    if (kind === "medkit") {
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.35, 0.5),
+        new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.6, emissive: 0x331111, emissiveIntensity: 0.3 }),
+      );
+      box.castShadow = true;
+      grp.add(box);
+      const cross1 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.36, 0.08, 0.08),
+        new THREE.MeshStandardMaterial({ color: 0xff2233, emissive: 0xff0000, emissiveIntensity: 0.7 }),
+      );
+      cross1.position.set(0, 0.2, 0);
+      grp.add(cross1);
+      const cross2 = cross1.clone();
+      cross2.rotation.y = Math.PI / 2;
+      grp.add(cross2);
+      const lt = new THREE.PointLight(0xff3344, 0.8, 4, 2);
+      lt.position.y = 0.6;
+      grp.add(lt);
+    } else {
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(0.55, 0.3, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x3a4a25, roughness: 0.8, emissive: 0x111100, emissiveIntensity: 0.2 }),
+      );
+      box.castShadow = true;
+      grp.add(box);
+      const label = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 0.18, 0.02),
+        new THREE.MeshStandardMaterial({ color: 0xffcc33, emissive: 0xffaa00, emissiveIntensity: 0.6 }),
+      );
+      label.position.set(0, 0, 0.21);
+      grp.add(label);
+      const lt = new THREE.PointLight(0xffaa33, 0.7, 4, 2);
+      lt.position.y = 0.6;
+      grp.add(lt);
+    }
+    grp.position.set(x, 0.4, z);
+    this.scene.add(grp);
+    this.pickups.push({
+      mesh: grp,
+      kind,
+      pos: grp.position,
+      bob: Math.random() * Math.PI * 2,
+      alive: true,
+    });
+  }
+
+  private updatePickups(dt: number) {
+    const t = this.clock.getElapsedTime();
+    for (const p of this.pickups) {
+      if (!p.alive) continue;
+      p.mesh.position.y = 0.4 + Math.sin(t * 2.5 + p.bob) * 0.12;
+      p.mesh.rotation.y += dt * 1.2;
+      const dx = p.pos.x - this.pos.x;
+      const dz = p.pos.z - this.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 1.6) {
+        if (p.kind === "medkit") {
+          this.hp = Math.min(100, this.hp + 30);
+          this.cb.onHealth(this.hp);
+          this.cb.onMessage("+30 HP");
+        } else {
+          this.ammo = Math.min(24, this.ammo + 12);
+          this.cb.onAmmo(this.ammo, this.weapon);
+          this.cb.onMessage("+12 Ammo");
+        }
+        this.sound.init();
+        this.sound.reload();
+        p.alive = false;
+        this.scene.remove(p.mesh);
+      }
+    }
+    this.pickups = this.pickups.filter((p) => p.alive);
+  }
+
 
   private updatePlayer(dt: number) {
     this.camera.rotation.order = "YXZ";
@@ -1119,16 +1339,28 @@ export class ForestHorrorGame {
       move.add(forward.clone().multiplyScalar(-this.moveInput.y));
       move.add(right.clone().multiplyScalar(this.moveInput.x));
     }
+    let sprintActive = false;
     if (move.lengthSq() > 0) {
       move.normalize();
-      const sprint = this.keys["ShiftLeft"] ? 1.6 : 1.0;
-      this.pos.addScaledVector(move, 4 * sprint * dt);
+      const wantsSprint = !!(this.keys["ShiftLeft"] || this.keys["ShiftRight"]);
+      sprintActive = wantsSprint && this.stamina > 5;
+      const sprintMul = sprintActive ? 1.7 : 1.0;
+      this.pos.addScaledVector(move, 4 * sprintMul * dt);
       this.footstepCd -= dt;
       if (this.footstepCd <= 0) {
         this.sound.footstep();
-        this.footstepCd = sprint > 1 ? 0.32 : 0.45;
+        this.footstepCd = sprintActive ? 0.3 : 0.45;
       }
     }
+    this.sprinting = sprintActive;
+    // Stamina drain / regen
+    if (sprintActive) {
+      this.stamina = Math.max(0, this.stamina - 28 * dt);
+    } else {
+      this.stamina = Math.min(100, this.stamina + 18 * dt);
+    }
+    this.cb.onStamina?.(this.stamina);
+
     // Clamp inside world
     const r = Math.hypot(this.pos.x, this.pos.z);
     if (r > 120) {
@@ -1431,11 +1663,17 @@ export class ForestHorrorGame {
     this.raf = requestAnimationFrame(this.loop);
     const dt = Math.min(0.05, this.clock.getDelta());
 
+    if (this.paused) {
+      this.composer.render();
+      return;
+    }
+
     this.spawnTimer -= dt;
-    const targetCount = Math.min(this.maxActiveZombies, 1 + Math.floor(this.kills / 6));
+    const targetCount = Math.min(this.maxActiveZombies, 1 + Math.floor(this.kills / 4) + this.wave);
+    const spawnInterval = Math.max(1.6, 4.5 - this.wave * 0.3);
     if (this.spawnTimer <= 0 && this.enemies.length < targetCount) {
       this.spawnEnemy();
-      this.spawnTimer = 4.5;
+      this.spawnTimer = spawnInterval;
     }
 
     if (!this.giantSpawned && this.kills >= 5 && this.giantEntTemplate) {
@@ -1447,18 +1685,42 @@ export class ForestHorrorGame {
 
     this.updatePlayer(dt);
     this.updateEnemies(dt);
+    this.updatePickups(dt);
     this.updateWeather(dt);
 
-    // Post-processing uniforms — damage flash + grain animation
+    // Minimap broadcast (throttled ~10Hz)
+    this.minimapCd -= dt;
+    if (this.minimapCd <= 0 && this.cb.onMinimap) {
+      this.minimapCd = 0.1;
+      this.cb.onMinimap({
+        px: this.pos.x,
+        pz: this.pos.z,
+        yaw: this.yaw,
+        enemies: this.enemies
+          .filter((e) => e.alive)
+          .map((e) => ({
+            x: e.mesh.position.x,
+            z: e.mesh.position.z,
+            kind: e.type === "giant_ent" || e.type === "fallen_angel"
+              ? "boss"
+              : e.variant === "runner" ? "runner"
+              : e.variant === "tank" ? "tank"
+              : "zombie",
+          })),
+        pickups: this.pickups
+          .filter((p) => p.alive)
+          .map((p) => ({ x: p.pos.x, z: p.pos.z, kind: p.kind })),
+      });
+    }
+
+    // Post-processing uniforms
     if (this.grainPass) {
       const u = this.grainPass.uniforms;
       u.uTime.value = this.clock.getElapsedTime();
-      // Damage overlay scales with missing HP
       const dmgT = Math.max(0, 1 - this.hp / 100);
       u.uDamage.value = THREE.MathUtils.lerp(u.uDamage.value as number, dmgT * 0.6, 0.1);
     }
     if (this.bloomPass) {
-      // Pulse bloom on muzzle/lightning
       const boost = this.muzzleFlash > 0 ? 0.4 : 0;
       const ltn = this.lightningFlash > 0 ? this.lightningFlash * 0.6 : 0;
       this.bloomPass.strength = 0.35 + boost + ltn;
@@ -1466,6 +1728,7 @@ export class ForestHorrorGame {
 
     this.composer.render();
   };
+
 
 
   public dispose() {
