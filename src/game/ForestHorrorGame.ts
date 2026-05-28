@@ -1076,10 +1076,25 @@ export class ForestHorrorGame {
     if (e.code === "Digit1") this.setWeapon("gun");
     if (e.code === "Digit2") this.setWeapon("knife");
     if (e.code === "KeyR") this.reload();
+    if (e.code === "Escape" || e.code === "KeyP") this.togglePause();
   };
   private onKeyUp = (e: KeyboardEvent) => {
     this.keys[e.code] = false;
   };
+
+  public togglePause() {
+    this.paused = !this.paused;
+    this.cb.onPause?.(this.paused);
+    if (this.paused) {
+      this.cb.onMessage("PAUSED");
+      if (document.pointerLockElement) document.exitPointerLock?.();
+    } else {
+      this.cb.onMessage("Resumed");
+      this.clock.getDelta(); // discard accumulated delta
+    }
+  }
+  public isPaused() { return this.paused; }
+
 
   public setMoveInput(x: number, y: number) {
     this.moveInput.set(x, y);
