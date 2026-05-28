@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { ForestHorrorGame as ForestHorrorGameType, WeaponKind } from "@/game/ForestHorrorGame";
+import type { ForestHorrorGame as ForestHorrorGameType, WeaponKind, GrenadeKind, Difficulty } from "@/game/ForestHorrorGame";
 import { Joystick } from "@/game/Joystick";
 
 export const Route = createFileRoute("/")({
@@ -47,6 +47,8 @@ function Game() {
   const [paused, setPaused] = useState(false);
   const [grenades, setGrenades] = useState(3);
   const [ads, setAds] = useState(false);
+  const [grenadeKind, setGrenadeKind] = useState<GrenadeKind>("frag");
+  const [difficulty, setDifficulty] = useState<Difficulty>("normal");
 
   useEffect(() => {
     if (!started || !containerRef.current) return;
@@ -83,19 +85,21 @@ function Game() {
         onStamina: setStamina,
         onPause: setPaused,
         onMinimap: (d: MinimapData) => { minimapData.current = d; },
-      });
+      }, difficulty);
       gameInstance = game;
       gameRef.current = game;
     });
 
     const renderMinimap = () => {
-      // Poll ADS + grenade count
+      // Poll ADS + grenade count + kind
       const g = gameRef.current;
       if (g) {
         const gc = g.getGrenades?.();
         if (typeof gc === "number") setGrenades((prev) => prev !== gc ? gc : prev);
         const a = g.isAds?.();
         if (typeof a === "boolean") setAds((prev) => prev !== a ? a : prev);
+        const gk = g.getGrenadeKind?.();
+        if (gk) setGrenadeKind((prev) => prev !== gk ? gk : prev);
       }
 
       const cv = minimapRef.current;
@@ -137,6 +141,7 @@ function Game() {
             if (e.kind === "boss") { color = "#ff00ff"; r = 5; }
             else if (e.kind === "runner") { color = "#ff7733"; r = 2.5; }
             else if (e.kind === "tank") { color = "#883333"; r = 4; }
+            else if (e.kind === "charger") { color = "#ffaa22"; r = 3.5; }
             ctx.fillStyle = color;
             ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
           });
@@ -164,7 +169,7 @@ function Game() {
       clearTimeout(msgTimer); clearTimeout(bloodTimer); clearTimeout(lightTimer);
       gameInstance?.dispose(); gameRef.current = null;
     };
-  }, [started]);
+  }, [started, difficulty]);
 
   const handleMove = useCallback((x: number, y: number) => {
     gameRef.current?.setMoveInput(x, y);
@@ -193,14 +198,35 @@ function Game() {
             DARK FOREST
           </h1>
           <p className="text-zinc-400 text-sm md:text-base">
-            Rifle, Shotgun, Sniper + Grenades. Survive waves of zombies, runners, tanks & bosses.
+            Rifle, Shotgun, Sniper + Frag/Smoke/Incendiary grenades. Survive zombies, runners, tanks, chargers & bosses.
           </p>
           {highScore > 0 && (
             <p className="text-yellow-400 font-mono text-sm">🏆 HIGH SCORE: {highScore.toLocaleString()}</p>
           )}
+
+          {/* Difficulty selector */}
+          <div className="space-y-2">
+            <div className="text-xs uppercase tracking-widest text-red-400">Difficulty</div>
+            <div className="flex gap-2 justify-center">
+              {(["easy", "normal", "hard"] as Difficulty[]).map((d) => (
+                <button key={d} onClick={() => setDifficulty(d)}
+                  className={`px-4 py-2 text-xs font-bold rounded border tracking-widest transition ${difficulty === d
+                    ? "bg-red-700 border-red-300 text-white shadow-[0_0_15px_rgba(200,0,0,0.6)]"
+                    : "bg-black/40 border-white/30 text-white/70 hover:border-red-500"}`}>
+                  {d.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-zinc-500">
+              {difficulty === "easy" && "Less damage, slower spawns, 5 grenades."}
+              {difficulty === "normal" && "Balanced experience, 3 grenades."}
+              {difficulty === "hard" && "More damage, faster spawns, 2 grenades."}
+            </p>
+          </div>
+
           <div className="text-left text-xs text-zinc-500 space-y-1 bg-white/5 p-4 rounded-lg border border-white/10">
-            <p><span className="text-red-400">PC:</span> WASD · Shift sprint · C crouch · Mouse look · LMB shoot · RMB ADS · R reload · G grenade · 1/2/3/4 weapon · F torch · ESC pause</p>
-            <p><span className="text-red-400">Mobile:</span> Joystick · Right side look · Buttons: fire/ADS/grenade/reload/crouch/torch/pause</p>
+            <p><span className="text-red-400">PC:</span> WASD · Shift sprint · C crouch · Mouse look · LMB shoot · RMB ADS · R reload · G grenade · B cycle nade · 1/2/3/4 weapon · F torch · ESC pause</p>
+            <p><span className="text-red-400">Mobile:</span> Joystick · Right side look · Buttons: fire/ADS/grenade/cycle/reload/crouch/torch/pause</p>
           </div>
           <button
             onClick={() => setStarted(true)}
@@ -308,7 +334,9 @@ function Game() {
       <div className="absolute bottom-6 right-6 text-white font-mono text-right z-20 pointer-events-none">
         <div className="text-xs uppercase tracking-widest text-red-400">{weapon}{ads ? " · ADS" : ""}</div>
         <div className="text-3xl font-black">{weapon === "knife" ? "∞" : `${ammo} / ${maxAmmo}`}</div>
-        <div className="text-xs text-orange-300 mt-1">🧨 {grenades}</div>
+        <div className="text-xs text-orange-300 mt-1">
+          {grenadeKind === "frag" ? "💥" : grenadeKind === "smoke" ? "💨" : "🔥"} {grenades} <span className="text-[9px] text-zinc-400 uppercase">{grenadeKind}</span>
+        </div>
       </div>
 
       <Joystick onMove={handleMove} />
@@ -329,8 +357,13 @@ function Game() {
           <button
             onTouchStart={(e) => { e.preventDefault(); gameRef.current?.throwGrenade(); }}
             onClick={() => gameRef.current?.throwGrenade()}
-            className="w-14 h-14 rounded-full bg-orange-700/70 border-2 border-orange-300 text-white text-xs font-bold"
-          >🧨</button>
+            className="w-14 h-14 rounded-full bg-orange-700/70 border-2 border-orange-300 text-white text-base font-bold"
+          >{grenadeKind === "frag" ? "💥" : grenadeKind === "smoke" ? "💨" : "🔥"}</button>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); gameRef.current?.cycleGrenade(); }}
+            onClick={() => gameRef.current?.cycleGrenade()}
+            className="w-14 h-14 rounded-full bg-zinc-700/70 border-2 border-zinc-300 text-white text-[10px] font-bold"
+          >CYCLE</button>
         </div>
       </div>
 

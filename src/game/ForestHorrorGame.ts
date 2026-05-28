@@ -23,7 +23,10 @@ export type GameCallbacks = {
   onMinimap?: (data: { px: number; pz: number; yaw: number; enemies: { x: number; z: number; kind: string }[]; pickups: { x: number; z: number; kind: string }[] }) => void;
 };
 
-type ZombieVariant = "normal" | "runner" | "tank";
+type ZombieVariant = "normal" | "runner" | "tank" | "charger";
+export type GrenadeKind = "frag" | "smoke" | "incendiary";
+export type Difficulty = "easy" | "normal" | "hard";
+type BurnZone = { mesh: THREE.Mesh; pos: THREE.Vector3; t: number; radius: number; ringMat: THREE.Material };
 
 export type WeaponKind = "gun" | "shotgun" | "sniper" | "knife";
 
@@ -74,6 +77,9 @@ type Enemy = {
   attackRange?: number;
   damage?: number;
   scoreValue?: number;
+  slowT?: number;
+  burnT?: number;
+  knockback?: number;
 };
 
 type Pickup = {
@@ -115,7 +121,15 @@ export class ForestHorrorGame {
 
   // Grenades
   private grenadeCount = 3;
-  private grenades: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number }[] = [];
+  private grenadeKind: GrenadeKind = "frag";
+  private grenades: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number; kind: GrenadeKind }[] = [];
+  private burnZones: BurnZone[] = [];
+
+  // Difficulty
+  private difficulty: Difficulty = "normal";
+  private dmgMul = 1; // multiplier for damage dealt to player
+  private spawnMul = 1; // multiplier on spawn pacing (lower=faster)
+
 
   // Input
   private keys: Record<string, boolean> = {};
@@ -192,9 +206,13 @@ export class ForestHorrorGame {
   private readonly reloadDuration = 1.6;
   private magMesh!: THREE.Mesh;
 
-  constructor(container: HTMLElement, cb: GameCallbacks) {
+  constructor(container: HTMLElement, cb: GameCallbacks, difficulty: Difficulty = "normal") {
     this.container = container;
     this.cb = cb;
+    this.difficulty = difficulty;
+    if (difficulty === "easy") { this.dmgMul = 0.6; this.spawnMul = 1.4; this.grenadeCount = 5; }
+    else if (difficulty === "hard") { this.dmgMul = 1.6; this.spawnMul = 0.7; this.grenadeCount = 2; }
+
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -861,10 +879,12 @@ export class ForestHorrorGame {
     // Pick variant — chance increases with wave
     let variant: ZombieVariant = "normal";
     const roll = Math.random();
-    const runnerChance = Math.min(0.4, 0.1 + this.wave * 0.05);
-    const tankChance = Math.min(0.25, 0.05 + this.wave * 0.03);
+    const runnerChance = Math.min(0.35, 0.1 + this.wave * 0.04);
+    const tankChance = Math.min(0.22, 0.05 + this.wave * 0.025);
+    const chargerChance = this.wave >= 2 ? Math.min(0.2, 0.04 + this.wave * 0.025) : 0;
     if (roll < runnerChance) variant = "runner";
     else if (roll < runnerChance + tankChance) variant = "tank";
+    else if (roll < runnerChance + tankChance + chargerChance) variant = "charger";
 
     const enemy = new THREE.Group();
     const model = SkeletonUtils.clone(this.zombieTemplate) as THREE.Group;
@@ -876,20 +896,16 @@ export class ForestHorrorGame {
     let speed = 1.6;
     let damage = 12;
     let scoreValue = 100;
+    let knockback = 0;
     if (variant === "runner") {
       tint = new THREE.Color(0x8a2a2a);
-      scaleMul = 0.9;
-      hp = 35;
-      speed = 3.2;
-      damage = 8;
-      scoreValue = 150;
+      scaleMul = 0.9; hp = 35; speed = 3.2; damage = 8; scoreValue = 150;
     } else if (variant === "tank") {
       tint = new THREE.Color(0x2a3a1a);
-      scaleMul = 1.35;
-      hp = 180;
-      speed = 1.0;
-      damage = 22;
-      scoreValue = 300;
+      scaleMul = 1.35; hp = 180; speed = 1.0; damage = 22; scoreValue = 300;
+    } else if (variant === "charger") {
+      tint = new THREE.Color(0xffaa22);
+      scaleMul = 1.1; hp = 80; speed = 4.2; damage = 18; scoreValue = 250; knockback = 4;
     } else {
       tint = new THREE.Color().setHSL(
         0.25 + Math.random() * 0.08,
@@ -909,6 +925,9 @@ export class ForestHorrorGame {
         } else if (variant === "runner") {
           mat.emissive = new THREE.Color(0x441100);
           mat.emissiveIntensity = 0.35;
+        } else if (variant === "charger") {
+          mat.emissive = new THREE.Color(0xff5500);
+          mat.emissiveIntensity = 0.6;
         }
         m.material = mat;
         m.castShadow = true;
@@ -921,8 +940,8 @@ export class ForestHorrorGame {
       mixer = new THREE.AnimationMixer(model);
       const clip = this.zombieAnimations[0];
       const action = mixer.clipAction(clip);
-      // Runners animate faster, tanks slower
-      const baseTs = variant === "runner" ? 1.8 : variant === "tank" ? 0.7 : 1;
+      // Runners/Chargers animate faster, tanks slower
+      const baseTs = variant === "runner" ? 1.8 : variant === "charger" ? 2.1 : variant === "tank" ? 0.7 : 1;
       action.timeScale = baseTs + Math.random() * 0.25;
       action.play();
     }
@@ -954,6 +973,7 @@ export class ForestHorrorGame {
       isFbxModel: true,
       damage,
       scoreValue,
+      knockback,
     });
   }
 
@@ -1174,6 +1194,7 @@ export class ForestHorrorGame {
     if (e.code === "Digit4") this.setWeapon("knife");
     if (e.code === "KeyR") this.reload();
     if (e.code === "KeyG") this.throwGrenade();
+    if (e.code === "KeyB") this.cycleGrenade();
     if (e.code === "KeyC") this.toggleCrouch();
     if (e.code === "Escape" || e.code === "KeyP") this.togglePause();
   };
@@ -1321,15 +1342,27 @@ export class ForestHorrorGame {
     }
   }
 
+  public cycleGrenade() {
+    const order: GrenadeKind[] = ["frag", "smoke", "incendiary"];
+    const idx = order.indexOf(this.grenadeKind);
+    this.grenadeKind = order[(idx + 1) % order.length];
+    this.cb.onMessage(`Grenade: ${this.grenadeKind.toUpperCase()}`);
+  }
+
+  public getGrenadeKind() { return this.grenadeKind; }
+
   public throwGrenade() {
     if (this.grenadeCount <= 0) {
       this.cb.onMessage("No grenades!");
       return;
     }
     this.grenadeCount--;
+    const kind = this.grenadeKind;
+    const color = kind === "frag" ? 0x2a3a1c : kind === "smoke" ? 0x666677 : 0xaa3311;
+    const emissive = kind === "frag" ? 0x110000 : kind === "smoke" ? 0x222233 : 0x441100;
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.12, 12, 10),
-      new THREE.MeshStandardMaterial({ color: 0x2a3a1c, roughness: 0.6, metalness: 0.4, emissive: 0x110000, emissiveIntensity: 0.4 }),
+      new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.4, emissive, emissiveIntensity: 0.5 }),
     );
     mesh.castShadow = true;
     const origin = this.camera.getWorldPosition(new THREE.Vector3());
@@ -1337,21 +1370,19 @@ export class ForestHorrorGame {
     mesh.position.copy(origin).addScaledVector(dir, 0.5);
     const vel = dir.clone().multiplyScalar(18).add(new THREE.Vector3(0, 4, 0));
     this.scene.add(mesh);
-    this.grenades.push({ mesh, vel, t: 2.2 });
+    this.grenades.push({ mesh, vel, t: 2.2, kind });
     this.sound.init();
-    this.cb.onMessage(`Grenade thrown! (${this.grenadeCount} left)`);
+    this.cb.onMessage(`${kind.toUpperCase()} thrown! (${this.grenadeCount} left)`);
   }
 
   private updateGrenades(dt: number) {
     for (const g of this.grenades) {
       if (g.t <= 0) continue;
       g.t -= dt;
-      // Physics
       g.vel.y -= 16 * dt;
       g.mesh.position.addScaledVector(g.vel, dt);
       g.mesh.rotation.x += dt * 6;
       g.mesh.rotation.z += dt * 4;
-      // Floor bounce
       if (g.mesh.position.y < 0.15) {
         g.mesh.position.y = 0.15;
         g.vel.y *= -0.4;
@@ -1361,70 +1392,127 @@ export class ForestHorrorGame {
       if (g.t <= 0) this.explodeGrenade(g);
     }
     this.grenades = this.grenades.filter((g) => g.t > 0);
+
+    // Burn zones — DOT to enemies inside
+    for (const bz of this.burnZones) {
+      bz.t -= dt;
+      const m = bz.ringMat as THREE.MeshBasicMaterial;
+      m.opacity = Math.max(0, Math.min(0.7, bz.t * 0.25));
+      bz.mesh.rotation.z += dt * 0.6;
+      for (const e of this.enemies) {
+        if (!e.alive) continue;
+        const d = e.mesh.position.distanceTo(bz.pos);
+        if (d < bz.radius) {
+          e.hp -= 35 * dt;
+          e.burnT = 0.8;
+          if (e.hp <= 0) this.killEnemy(e);
+        }
+      }
+      // Player burn too
+      const pd = this.pos.distanceTo(bz.pos);
+      if (pd < bz.radius) {
+        this.hp = Math.max(0, this.hp - 8 * dt);
+        this.cb.onHealth(this.hp);
+        if (this.hp <= 0) { this.cb.onDeath(); this.running = false; }
+      }
+    }
+    this.burnZones = this.burnZones.filter((b) => {
+      if (b.t <= 0) { this.scene.remove(b.mesh); return false; }
+      return true;
+    });
   }
 
-  private explodeGrenade(g: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number }) {
+  private explodeGrenade(g: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number; kind: GrenadeKind }) {
     const pos = g.mesh.position.clone();
     this.scene.remove(g.mesh);
     g.t = -1;
-    this.sound.thunder();
 
-    // Bright flash light
-    const flash = new THREE.PointLight(0xffaa44, 30, 25, 2);
-    flash.position.copy(pos);
-    this.scene.add(flash);
-    let life = 0.3;
-    const fade = () => {
-      life -= 0.05;
-      flash.intensity = Math.max(0, life * 100);
-      if (life > 0) setTimeout(fade, 30);
-      else this.scene.remove(flash);
-    };
-    fade();
-
-    // Smoke/debris ring
-    const ringGeo = new THREE.RingGeometry(0.3, 0.5, 24);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffaa55, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.position.copy(pos);
-    ring.rotation.x = -Math.PI / 2;
-    this.scene.add(ring);
-    let rs = 1;
-    const grow = () => {
-      rs += 0.6;
-      ring.scale.setScalar(rs);
-      ringMat.opacity *= 0.85;
-      if (ringMat.opacity > 0.05) setTimeout(grow, 30);
-      else this.scene.remove(ring);
-    };
-    grow();
-
-    // Damage all enemies in radius
-    const radius = 6;
-    const baseDmg = 200;
-    for (const e of this.enemies) {
-      if (!e.alive) continue;
-      const d = e.mesh.position.distanceTo(pos);
-      if (d > radius) continue;
-      const falloff = 1 - d / radius;
-      const dmg = baseDmg * falloff;
-      e.hp -= dmg;
-      e.hitFlash = 0.2;
-      if (e.hp <= 0) this.killEnemy(e);
+    if (g.kind === "frag") {
+      this.sound.thunder();
+      const flash = new THREE.PointLight(0xffaa44, 30, 25, 2);
+      flash.position.copy(pos);
+      this.scene.add(flash);
+      let life = 0.3;
+      const fade = () => {
+        life -= 0.05;
+        flash.intensity = Math.max(0, life * 100);
+        if (life > 0) setTimeout(fade, 30);
+        else this.scene.remove(flash);
+      };
+      fade();
+      const ringGeo = new THREE.RingGeometry(0.3, 0.5, 24);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xffaa55, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.position.copy(pos); ring.rotation.x = -Math.PI / 2;
+      this.scene.add(ring);
+      let rs = 1;
+      const grow = () => {
+        rs += 0.6; ring.scale.setScalar(rs); ringMat.opacity *= 0.85;
+        if (ringMat.opacity > 0.05) setTimeout(grow, 30);
+        else this.scene.remove(ring);
+      };
+      grow();
+      const radius = 6, baseDmg = 200;
+      for (const e of this.enemies) {
+        if (!e.alive) continue;
+        const d = e.mesh.position.distanceTo(pos);
+        if (d > radius) continue;
+        const dmg = baseDmg * (1 - d / radius);
+        e.hp -= dmg; e.hitFlash = 0.2;
+        if (e.hp <= 0) this.killEnemy(e);
+      }
+      const pd = pos.distanceTo(this.pos);
+      if (pd < radius) {
+        const selfDmg = (1 - pd / radius) * 80;
+        this.hp = Math.max(0, this.hp - selfDmg);
+        this.cb.onHealth(this.hp); this.cb.onDamage();
+        if (this.hp <= 0) { this.cb.onDeath(); this.running = false; }
+      }
+      this.shake = Math.max(this.shake, Math.min(1.2, 1.2 * (1 - pd / 30)));
+    } else if (g.kind === "smoke") {
+      // Persistent smoke cloud: slows + blinds enemies in radius for 6s
+      const radius = 7;
+      const cloud = new THREE.Mesh(
+        new THREE.SphereGeometry(radius, 16, 12),
+        new THREE.MeshBasicMaterial({ color: 0xbbbbcc, transparent: true, opacity: 0.45, depthWrite: false }),
+      );
+      cloud.position.copy(pos); cloud.position.y = 1.5;
+      this.scene.add(cloud);
+      let life = 6;
+      const mat = cloud.material as THREE.MeshBasicMaterial;
+      const tick = () => {
+        life -= 0.1;
+        cloud.scale.setScalar(1 + (6 - life) * 0.05);
+        mat.opacity = Math.max(0, Math.min(0.55, life * 0.1));
+        // slow enemies inside
+        for (const e of this.enemies) {
+          if (!e.alive) continue;
+          if (e.mesh.position.distanceTo(pos) < radius) e.slowT = 0.4;
+        }
+        if (life > 0) setTimeout(tick, 100);
+        else this.scene.remove(cloud);
+      };
+      tick();
+      this.cb.onMessage("Smoke deployed!");
+    } else {
+      // incendiary: burn zone
+      this.sound.thunder();
+      const radius = 4.5;
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xff5522, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false });
+      const ring = new THREE.Mesh(new THREE.CircleGeometry(radius, 32), ringMat);
+      ring.position.copy(pos); ring.position.y = 0.05; ring.rotation.x = -Math.PI / 2;
+      this.scene.add(ring);
+      this.burnZones.push({ mesh: ring, pos: pos.clone(), t: 5, radius, ringMat });
+      const flash = new THREE.PointLight(0xff5522, 12, 18, 2);
+      flash.position.copy(pos); flash.position.y = 1;
+      this.scene.add(flash);
+      setTimeout(() => this.scene.remove(flash), 5000);
+      this.cb.onMessage("Fire spreads!");
     }
-    // Player damage if too close
-    const pd = pos.distanceTo(this.pos);
-    if (pd < radius) {
-      const selfDmg = (1 - pd / radius) * 80;
-      this.hp = Math.max(0, this.hp - selfDmg);
-      this.cb.onHealth(this.hp);
-      this.cb.onDamage();
-      if (this.hp <= 0) { this.cb.onDeath(); this.running = false; }
-    }
-    this.shake = Math.max(this.shake, Math.min(1.2, 1.2 * (1 - pd / 30)));
   }
 
   public getGrenades() { return this.grenadeCount; }
+
 
 
 
@@ -1481,7 +1569,7 @@ export class ForestHorrorGame {
       this.cb.onMessage("🏆 FALLEN ANGEL VANQUISHED! +3500");
       this.shake = Math.max(this.shake, 0.9);
     } else {
-      const tag = e.variant === "runner" ? "Runner down!" : e.variant === "tank" ? "Tank down!" : "Zombie down!";
+      const tag = e.variant === "runner" ? "Runner down!" : e.variant === "tank" ? "Tank down!" : e.variant === "charger" ? "Charger down!" : "Zombie down!";
       this.cb.onMessage(e.type === "ghost" ? "Ghost banished!" : tag);
     }
   }
@@ -1763,7 +1851,11 @@ export class ForestHorrorGame {
       if (dist > 0.01) toPlayer.normalize();
 
       // Stagger when hit
-      const moveSpeed = e.hitFlash > 0 ? e.speed * 0.2 : e.speed;
+      // Status tick
+      if ((e.slowT ?? 0) > 0) e.slowT = (e.slowT ?? 0) - dt;
+      if ((e.burnT ?? 0) > 0) e.burnT = (e.burnT ?? 0) - dt;
+      const slowMul = (e.slowT ?? 0) > 0 ? 0.35 : 1;
+      const moveSpeed = (e.hitFlash > 0 ? e.speed * 0.2 : e.speed) * slowMul;
       e.mesh.position.addScaledVector(toPlayer, moveSpeed * dt);
       e.mesh.lookAt(this.pos.x, e.mesh.position.y, this.pos.z);
 
@@ -1826,8 +1918,15 @@ export class ForestHorrorGame {
       const range = e.attackRange ?? 1.6;
       if (dist < range && e.attackCd <= 0) {
         e.attackCd = e.isGiant ? 2.0 : 1.2;
-        const dmg = e.damage ?? (e.type === "ghost" ? 8 : 12);
+        const baseDmg = e.damage ?? (e.type === "ghost" ? 8 : 12);
+        const dmg = baseDmg * this.dmgMul;
         this.hp -= dmg;
+        // Charger knockback
+        if (e.knockback && e.knockback > 0) {
+          const kbDir = new THREE.Vector3(this.pos.x - e.mesh.position.x, 0, this.pos.z - e.mesh.position.z).normalize();
+          this.pos.addScaledVector(kbDir, e.knockback);
+          this.shake = Math.max(this.shake, 0.9);
+        }
         this.shake = Math.max(this.shake, e.isGiant ? 1.0 : 0.4);
         this.sound.hurt();
         this.cb.onHealth(Math.max(0, this.hp));
@@ -1968,7 +2067,7 @@ export class ForestHorrorGame {
 
     this.spawnTimer -= dt;
     const targetCount = Math.min(this.maxActiveZombies, 1 + Math.floor(this.kills / 4) + this.wave);
-    const spawnInterval = Math.max(1.6, 4.5 - this.wave * 0.3);
+    const spawnInterval = Math.max(1.0, (4.5 - this.wave * 0.3) * this.spawnMul);
     if (this.spawnTimer <= 0 && this.enemies.length < targetCount) {
       this.spawnEnemy();
       this.spawnTimer = spawnInterval;
@@ -2005,6 +2104,7 @@ export class ForestHorrorGame {
               ? "boss"
               : e.variant === "runner" ? "runner"
               : e.variant === "tank" ? "tank"
+              : e.variant === "charger" ? "charger"
               : "zombie",
           })),
         pickups: this.pickups
