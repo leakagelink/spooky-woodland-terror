@@ -25,9 +25,12 @@ type Enemy = {
   origMats: Map<THREE.Mesh, THREE.Material | THREE.Material[]>;
   lastGrowl: number;
   limbs?: {
-    armL: THREE.Object3D; armR: THREE.Object3D;
-    legL: THREE.Object3D; legR: THREE.Object3D;
-    head: THREE.Object3D; torso: THREE.Object3D;
+    armL: THREE.Object3D;
+    armR: THREE.Object3D;
+    legL: THREE.Object3D;
+    legR: THREE.Object3D;
+    head: THREE.Object3D;
+    torso: THREE.Object3D;
     jaw?: THREE.Object3D;
   };
   phase: number;
@@ -95,7 +98,10 @@ export class ForestHorrorGame {
     this.container = container;
     this.cb = cb;
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance",
+    });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.shadowMap.enabled = false;
@@ -108,7 +114,12 @@ export class ForestHorrorGame {
     this.fog = new THREE.FogExp2(0x0a1015, 0.025);
     this.scene.fog = this.fog;
 
-    this.camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 200);
+    this.camera = new THREE.PerspectiveCamera(
+      75,
+      container.clientWidth / container.clientHeight,
+      0.1,
+      200,
+    );
     this.camera.position.copy(this.pos);
 
     this.buildWorld();
@@ -169,7 +180,7 @@ export class ForestHorrorGame {
       (err) => {
         console.warn("Failed to load zombie FBX, using fallback geometry", err);
         this.cb.onMessage("Survive the forest...");
-      }
+      },
     );
   }
 
@@ -226,12 +237,11 @@ export class ForestHorrorGame {
       undefined,
       (err) => {
         console.warn("Failed to load forest GLB, keeping procedural trees", err);
-      }
+      },
     );
   }
 
   private buildWorld() {
-
     // Ambient — brighter so player can see scene
     this.ambient = new THREE.AmbientLight(0x4a5a70, 1.1);
     this.scene.add(this.ambient);
@@ -260,7 +270,8 @@ export class ForestHorrorGame {
     const groundGeo = new THREE.PlaneGeometry(300, 300, 64, 64);
     const gpos = groundGeo.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < gpos.count; i++) {
-      const x = gpos.getX(i), y = gpos.getY(i);
+      const x = gpos.getX(i),
+        y = gpos.getY(i);
       gpos.setZ(i, Math.sin(x * 0.3) * 0.3 + Math.cos(y * 0.2) * 0.4 + Math.random() * 0.2);
     }
     groundGeo.computeVertexNormals();
@@ -304,16 +315,24 @@ export class ForestHorrorGame {
     const trunkRough = loadTex("/textures/forest/Trunk_Oak_Roughness.png", 1);
     const trunkGeo = new THREE.CylinderGeometry(0.35, 0.55, 7, 10);
     const trunkMat = new THREE.MeshStandardMaterial({
-      map: trunkMap, normalMap: trunkNormal, roughnessMap: trunkRough,
-      color: 0x8a6a45, roughness: 1,
+      map: trunkMap,
+      normalMap: trunkNormal,
+      roughnessMap: trunkRough,
+      color: 0x8a6a45,
+      roughness: 1,
     });
     const leafDiff = loadTex("/textures/forest/Bush_Leaves_Diffuse.png", 1, true);
     const leafNormal = loadTex("/textures/forest/Bush_Leaves_Normal.png", 1);
     const leafOpacity = loadTex("/textures/forest/Bush_Leaves_Opacity.png", 1);
     const leafMat = new THREE.MeshStandardMaterial({
-      map: leafDiff, normalMap: leafNormal, alphaMap: leafOpacity,
-      transparent: true, alphaTest: 0.45, side: THREE.DoubleSide,
-      color: 0x6b8a3c, roughness: 1,
+      map: leafDiff,
+      normalMap: leafNormal,
+      alphaMap: leafOpacity,
+      transparent: true,
+      alphaTest: 0.45,
+      side: THREE.DoubleSide,
+      color: 0x6b8a3c,
+      roughness: 1,
     });
     const leafGeo = new THREE.SphereGeometry(2.4, 8, 6);
     for (let i = 0; i < 140; i++) {
@@ -347,7 +366,9 @@ export class ForestHorrorGame {
       map: loadTex("/textures/forest/Broken_Rocks_Diffuse.jpeg", 1, true),
       normalMap: loadTex("/textures/forest/Broken_Rocks_Normal.jpeg", 1),
       roughnessMap: loadTex("/textures/forest/Broken_Rocks_Roughness.jpeg", 1),
-      color: 0x6a6a70, roughness: 1, flatShading: true,
+      color: 0x6a6a70,
+      roughness: 1,
+      flatShading: true,
     });
     const rockGeo = new THREE.DodecahedronGeometry(1, 0);
     for (let i = 0; i < 40; i++) {
@@ -359,7 +380,6 @@ export class ForestHorrorGame {
       rock.scale.setScalar(0.5 + Math.random() * 1.5);
       this.scene.add(rock);
     }
-
 
     // Flashlight attached to camera (no shadows for mobile perf)
     this.flashlight = new THREE.SpotLight(0xfff0c0, 60, 45, Math.PI / 6, 0.5, 1.2);
@@ -388,7 +408,10 @@ export class ForestHorrorGame {
     const rainGeo = new THREE.BufferGeometry();
     rainGeo.setAttribute("position", new THREE.BufferAttribute(this.rainPositions, 3));
     const rainMat = new THREE.PointsMaterial({
-      color: 0xaaccee, size: 0.08, transparent: true, opacity: 0.55,
+      color: 0xaaccee,
+      size: 0.08,
+      transparent: true,
+      opacity: 0.55,
       depthWrite: false,
     });
     this.rain = new THREE.Points(rainGeo, rainMat);
@@ -399,10 +422,28 @@ export class ForestHorrorGame {
     // Gun — detailed dark first-person rifle built from reliable geometry.
     // The imported SCAR FBX had broken/white materials, so keep this non-white model always visible.
     this.gunMesh = new THREE.Group();
-    const gunMetal = new THREE.MeshStandardMaterial({ color: 0x15181d, metalness: 0.85, roughness: 0.32, emissive: 0x030405 });
-    const blackPolymer = new THREE.MeshStandardMaterial({ color: 0x08090b, metalness: 0.2, roughness: 0.78, emissive: 0x020202 });
-    const wornEdge = new THREE.MeshStandardMaterial({ color: 0x33383f, metalness: 0.9, roughness: 0.28 });
-    const brass = new THREE.MeshStandardMaterial({ color: 0x8a6426, metalness: 0.7, roughness: 0.38 });
+    const gunMetal = new THREE.MeshStandardMaterial({
+      color: 0x15181d,
+      metalness: 0.85,
+      roughness: 0.32,
+      emissive: 0x030405,
+    });
+    const blackPolymer = new THREE.MeshStandardMaterial({
+      color: 0x08090b,
+      metalness: 0.2,
+      roughness: 0.78,
+      emissive: 0x020202,
+    });
+    const wornEdge = new THREE.MeshStandardMaterial({
+      color: 0x33383f,
+      metalness: 0.9,
+      roughness: 0.28,
+    });
+    const brass = new THREE.MeshStandardMaterial({
+      color: 0x8a6426,
+      metalness: 0.7,
+      roughness: 0.38,
+    });
 
     const boxPart = (
       size: [number, number, number],
@@ -425,7 +466,10 @@ export class ForestHorrorGame {
       rot: [number, number, number] = [Math.PI / 2, 0, 0],
       segments = 18,
     ) => {
-      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, depth, segments), mat);
+      const mesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(radiusTop, radiusBottom, depth, segments),
+        mat,
+      );
       mesh.position.set(...pos);
       mesh.rotation.set(...rot);
       this.gunMesh.add(mesh);
@@ -457,12 +501,17 @@ export class ForestHorrorGame {
     this.knifeMesh = new THREE.Group();
     const blade = new THREE.Mesh(
       new THREE.BoxGeometry(0.04, 0.02, 0.35),
-      new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 1, roughness: 0.15, emissive: 0x222222 })
+      new THREE.MeshStandardMaterial({
+        color: 0xcccccc,
+        metalness: 1,
+        roughness: 0.15,
+        emissive: 0x222222,
+      }),
     );
     blade.position.z = -0.2;
     const handle = new THREE.Mesh(
       new THREE.BoxGeometry(0.05, 0.05, 0.15),
-      new THREE.MeshStandardMaterial({ color: 0x3a2010, roughness: 0.9 })
+      new THREE.MeshStandardMaterial({ color: 0x3a2010, roughness: 0.9 }),
     );
     this.knifeMesh.add(blade, handle);
     this.knifeMesh.position.set(0.15, -0.18, -0.4);
@@ -508,11 +557,7 @@ export class ForestHorrorGame {
     // Spawn around player at distance
     const angle = Math.random() * Math.PI * 2;
     const dist = 20 + Math.random() * 25;
-    enemy.position.set(
-      this.pos.x + Math.cos(angle) * dist,
-      0,
-      this.pos.z + Math.sin(angle) * dist,
-    );
+    enemy.position.set(this.pos.x + Math.cos(angle) * dist, 0, this.pos.z + Math.sin(angle) * dist);
     this.scene.add(enemy);
 
     const origMats = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
@@ -536,7 +581,6 @@ export class ForestHorrorGame {
       isFbxModel: true,
     });
   }
-
 
   private bindInput() {
     const canvas = this.renderer.domElement;
@@ -576,7 +620,9 @@ export class ForestHorrorGame {
       this.lastTouchX = t.clientX;
       this.lastTouchY = t.clientY;
     });
-    canvas.addEventListener("touchend", () => { this.looking = false; });
+    canvas.addEventListener("touchend", () => {
+      this.looking = false;
+    });
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -586,9 +632,13 @@ export class ForestHorrorGame {
     if (e.code === "Digit2") this.setWeapon("knife");
     if (e.code === "KeyR") this.reload();
   };
-  private onKeyUp = (e: KeyboardEvent) => { this.keys[e.code] = false; };
+  private onKeyUp = (e: KeyboardEvent) => {
+    this.keys[e.code] = false;
+  };
 
-  public setMoveInput(x: number, y: number) { this.moveInput.set(x, y); }
+  public setMoveInput(x: number, y: number) {
+    this.moveInput.set(x, y);
+  }
   public toggleFlashlight() {
     this.flashlightOn = !this.flashlightOn;
     this.flashlight.intensity = this.flashlightOn ? 60 : 0;
@@ -602,17 +652,24 @@ export class ForestHorrorGame {
   }
   public reload() {
     if (this.weapon !== "gun") return;
-    this.sound.init(); this.sound.reload();
+    this.sound.init();
+    this.sound.reload();
     this.ammo = 24;
     this.cb.onAmmo(this.ammo, this.weapon);
     this.cb.onMessage("Reloaded");
   }
-  public attack() { this.sound.init(); this.tryAttack(); }
+  public attack() {
+    this.sound.init();
+    this.tryAttack();
+  }
 
   private tryAttack() {
     if (this.fireCd > 0) return;
     if (this.weapon === "gun") {
-      if (this.ammo <= 0) { this.cb.onMessage("Out of ammo! Press R"); return; }
+      if (this.ammo <= 0) {
+        this.cb.onMessage("Out of ammo! Press R");
+        return;
+      }
       this.ammo--;
       this.fireCd = 0.25;
       this.muzzleFlash = 0.08;
@@ -644,7 +701,9 @@ export class ForestHorrorGame {
       closest.e.hitFlash = 0.15;
       // Tint red
       const redMat = new THREE.MeshBasicMaterial({ color: 0xff3030 });
-      closest.e.origMats.forEach((_, m) => { m.material = redMat; });
+      closest.e.origMats.forEach((_, m) => {
+        m.material = redMat;
+      });
       if (closest.e.hp <= 0) this.killEnemy(closest.e);
       else this.cb.onMessage("Hit!");
     }
@@ -686,7 +745,10 @@ export class ForestHorrorGame {
     }
     // Clamp inside world
     const r = Math.hypot(this.pos.x, this.pos.z);
-    if (r > 120) { this.pos.x *= 120 / r; this.pos.z *= 120 / r; }
+    if (r > 120) {
+      this.pos.x *= 120 / r;
+      this.pos.z *= 120 / r;
+    }
     this.pos.y = 1.7;
     this.camera.position.copy(this.pos);
 
@@ -702,8 +764,12 @@ export class ForestHorrorGame {
 
     const t = this.clock.getElapsedTime();
     const sway = move.lengthSq() > 0 ? 0.012 : 0.004;
-    const baseX = 0.13, baseY = -0.18, baseZ = -0.4;
-    const gunBaseRotX = -0.02, gunBaseRotY = -0.08, gunBaseRotZ = 0.02;
+    const baseX = 0.13,
+      baseY = -0.18,
+      baseZ = -0.4;
+    const gunBaseRotX = -0.02,
+      gunBaseRotY = -0.08,
+      gunBaseRotZ = 0.02;
 
     if (this.muzzleFlash > 0) {
       this.muzzleLight.intensity = 12;
@@ -738,7 +804,11 @@ export class ForestHorrorGame {
     const t = this.clock.getElapsedTime();
     for (const e of this.enemies) {
       if (!e.alive) continue;
-      const toPlayer = new THREE.Vector3(this.pos.x - e.mesh.position.x, 0, this.pos.z - e.mesh.position.z);
+      const toPlayer = new THREE.Vector3(
+        this.pos.x - e.mesh.position.x,
+        0,
+        this.pos.z - e.mesh.position.z,
+      );
       const dist = toPlayer.length();
       if (dist > 0.01) toPlayer.normalize();
 
@@ -779,7 +849,9 @@ export class ForestHorrorGame {
       if (e.hitFlash > 0) {
         e.hitFlash -= dt;
         if (e.hitFlash <= 0) {
-          e.origMats.forEach((mat, mesh) => { mesh.material = mat; });
+          e.origMats.forEach((mat, mesh) => {
+            mesh.material = mat;
+          });
         }
       }
 
@@ -848,7 +920,10 @@ export class ForestHorrorGame {
   }
 
   private loop = () => {
-    if (!this.running) { this.renderer.render(this.scene, this.camera); return; }
+    if (!this.running) {
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
     this.raf = requestAnimationFrame(this.loop);
     const dt = Math.min(0.05, this.clock.getDelta());
 
