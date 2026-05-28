@@ -133,6 +133,7 @@ export class ForestHorrorGame {
     this.buildPlayerWeapons();
     this.bindInput();
     this.loadZombieModel();
+    this.loadGiantEntModel();
     // Forest GLB uses spec-gloss extension (not supported) → renders white.
     // Skip it and rely on PBR-textured procedural trees in buildWorld().
     // this.loadForestAssets();
