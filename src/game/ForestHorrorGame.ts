@@ -1001,15 +1001,22 @@ export class ForestHorrorGame {
       }
 
       e.attackCd -= dt;
-      if (dist < 1.6 && e.attackCd <= 0) {
-        e.attackCd = 1.2;
-        const dmg = e.type === "ghost" ? 8 : 12;
+      const range = e.attackRange ?? 1.6;
+      if (dist < range && e.attackCd <= 0) {
+        e.attackCd = e.isGiant ? 2.0 : 1.2;
+        const dmg = e.damage ?? (e.type === "ghost" ? 8 : 12);
         this.hp -= dmg;
-        this.shake = Math.max(this.shake, 0.4);
+        this.shake = Math.max(this.shake, e.isGiant ? 1.0 : 0.4);
         this.sound.hurt();
         this.cb.onHealth(Math.max(0, this.hp));
         this.cb.onDamage();
-        this.cb.onMessage(e.type === "ghost" ? "Ghost touched you!" : "Zombie bite!");
+        this.cb.onMessage(
+          e.isGiant
+            ? "GIANT ENT SMASH!"
+            : e.type === "ghost"
+              ? "Ghost touched you!"
+              : "Zombie bite!",
+        );
         if (this.hp <= 0) {
           this.hp = 0;
           this.cb.onDeath();
