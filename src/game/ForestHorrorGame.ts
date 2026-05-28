@@ -112,6 +112,7 @@ export class ForestHorrorGame {
     this.buildWorld();
     this.buildPlayerWeapons();
     this.bindInput();
+    this.loadZombieModel();
 
     window.addEventListener("resize", this.onResize);
     this.loop();
@@ -119,7 +120,52 @@ export class ForestHorrorGame {
     this.cb.onHealth(this.hp);
     this.cb.onAmmo(this.ammo, this.weapon);
     this.cb.onKills(this.kills);
-    this.cb.onMessage("Survive the forest...");
+    this.cb.onMessage("Loading zombies...");
+  }
+
+  private loadZombieModel() {
+    const loader = new FBXLoader();
+    loader.load(
+      "/models/zombie/zombie.fbx",
+      (fbx) => {
+        const texLoader = new THREE.TextureLoader();
+        const tex = texLoader.load("/models/zombie/world_people_colors.png");
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.flipY = false;
+
+        // Normalize scale: FBX often comes in cm, we want ~1.8 units tall
+        const box = new THREE.Box3().setFromObject(fbx);
+        const size = box.getSize(new THREE.Vector3());
+        const scale = 1.8 / (size.y || 1);
+        fbx.scale.setScalar(scale);
+
+        // Apply texture + zombie tint to all meshes
+        fbx.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) {
+            m.castShadow = true;
+            const mat = new THREE.MeshStandardMaterial({
+              map: tex,
+              color: 0x88aa6a, // sickly green tint over texture
+              roughness: 0.9,
+              metalness: 0,
+              emissive: 0x1a0a08,
+              emissiveIntensity: 0.15,
+            });
+            m.material = mat;
+          }
+        });
+
+        this.zombieTemplate = fbx;
+        this.zombieAnimations = fbx.animations || [];
+        this.cb.onMessage("Survive the forest...");
+      },
+      undefined,
+      (err) => {
+        console.warn("Failed to load zombie FBX, using fallback geometry", err);
+        this.cb.onMessage("Survive the forest...");
+      }
+    );
   }
 
   private buildWorld() {
