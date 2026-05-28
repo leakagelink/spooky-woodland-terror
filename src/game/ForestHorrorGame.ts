@@ -1846,7 +1846,11 @@ export class ForestHorrorGame {
       if (dist > 0.01) toPlayer.normalize();
 
       // Stagger when hit
-      const moveSpeed = e.hitFlash > 0 ? e.speed * 0.2 : e.speed;
+      // Status tick
+      if ((e.slowT ?? 0) > 0) e.slowT = (e.slowT ?? 0) - dt;
+      if ((e.burnT ?? 0) > 0) e.burnT = (e.burnT ?? 0) - dt;
+      const slowMul = (e.slowT ?? 0) > 0 ? 0.35 : 1;
+      const moveSpeed = (e.hitFlash > 0 ? e.speed * 0.2 : e.speed) * slowMul;
       e.mesh.position.addScaledVector(toPlayer, moveSpeed * dt);
       e.mesh.lookAt(this.pos.x, e.mesh.position.y, this.pos.z);
 
