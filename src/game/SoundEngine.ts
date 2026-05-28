@@ -6,6 +6,31 @@ export class SoundEngine {
   private rainGain: GainNode | null = null;
   private ambientGain: GainNode | null = null;
 
+  /**
+   * Build a positional gain+panner chain for distance attenuation + stereo pan.
+   * dx/dz are offsets in world space from the listener (player), with -z forward.
+   * Returns the destination node a sound source should connect to.
+   */
+  private positional(dx: number, dz: number, maxDist = 30): AudioNode | null {
+    if (!this.ctx || !this.master) return null;
+    const dist = Math.hypot(dx, dz);
+    // Stereo pan: dx negative = left, positive = right (clamped)
+    const pan = Math.max(-1, Math.min(1, dx / Math.max(8, dist)));
+    // Distance attenuation
+    const atten = Math.max(0, 1 - dist / maxDist);
+    const panner = this.ctx.createStereoPanner();
+    panner.pan.value = pan;
+    const distGain = this.ctx.createGain();
+    distGain.gain.value = atten * atten; // quadratic falloff
+    // Distant sounds also lose highs
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 400 + (1 - dist / maxDist) * 4000;
+    lp.connect(panner).connect(distGain).connect(this.master);
+    return lp;
+  }
+
+
   init() {
     if (this.ctx) return;
     const Ctx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
