@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { ForestHorrorGame as ForestHorrorGameType } from "@/game/ForestHorrorGame";
+import type { ForestHorrorGame as ForestHorrorGameType, WeaponKind } from "@/game/ForestHorrorGame";
 import { Joystick } from "@/game/Joystick";
 
 export const Route = createFileRoute("/")({
@@ -22,6 +22,8 @@ type MinimapData = {
   pickups: { x: number; z: number; kind: string }[];
 };
 
+const MAX_AMMO: Record<string, number> = { gun: 24, shotgun: 6, sniper: 5, knife: 0 };
+
 function Game() {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<ForestHorrorGameType | null>(null);
@@ -32,7 +34,7 @@ function Game() {
   const [started, setStarted] = useState(false);
   const [hp, setHp] = useState(100);
   const [ammo, setAmmo] = useState(24);
-  const [weapon, setWeapon] = useState("gun");
+  const [weapon, setWeapon] = useState<string>("gun");
   const [kills, setKills] = useState(0);
   const [msg, setMsg] = useState("");
   const [dead, setDead] = useState(false);
@@ -43,6 +45,8 @@ function Game() {
   const [highScore, setHighScore] = useState(0);
   const [stamina, setStamina] = useState(100);
   const [paused, setPaused] = useState(false);
+  const [grenades, setGrenades] = useState(3);
+  const [ads, setAds] = useState(false);
 
   useEffect(() => {
     if (!started || !containerRef.current) return;
@@ -84,8 +88,16 @@ function Game() {
       gameRef.current = game;
     });
 
-    // Minimap render loop
     const renderMinimap = () => {
+      // Poll ADS + grenade count
+      const g = gameRef.current;
+      if (g) {
+        const gc = g.getGrenades?.();
+        if (typeof gc === "number") setGrenades((prev) => prev !== gc ? gc : prev);
+        const a = g.isAds?.();
+        if (typeof a === "boolean") setAds((prev) => prev !== a ? a : prev);
+      }
+
       const cv = minimapRef.current;
       const d = minimapData.current;
       if (cv && d) {
@@ -93,63 +105,47 @@ function Game() {
         if (ctx) {
           const size = cv.width;
           const radius = size / 2;
-          const range = 50; // world units shown
+          const range = 50;
           ctx.clearRect(0, 0, size, size);
-          // Background
           ctx.fillStyle = "rgba(10,15,10,0.75)";
-          ctx.beginPath();
-          ctx.arc(radius, radius, radius - 1, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.beginPath(); ctx.arc(radius, radius, radius - 1, 0, Math.PI * 2); ctx.fill();
           ctx.strokeStyle = "rgba(180,40,40,0.6)";
-          ctx.lineWidth = 2;
-          ctx.stroke();
-          // Rings
+          ctx.lineWidth = 2; ctx.stroke();
           ctx.strokeStyle = "rgba(120,180,120,0.2)";
           ctx.lineWidth = 1;
           for (let r = radius / 3; r < radius; r += radius / 3) {
             ctx.beginPath(); ctx.arc(radius, radius, r, 0, Math.PI * 2); ctx.stroke();
           }
-          // Project entities — rotated so "up" = player forward
           const yaw = d.yaw;
           const cos = Math.cos(yaw), sin = Math.sin(yaw);
           const project = (x: number, z: number) => {
-            const dx = x - d.px;
-            const dz = z - d.pz;
-            // Player forward is -Z rotated by yaw; rotate world so forward = up
+            const dx = x - d.px, dz = z - d.pz;
             const lx = dx * cos - dz * sin;
             const lz = dx * sin + dz * cos;
-            const px = radius + (lx / range) * radius;
-            const py = radius + (lz / range) * radius;
-            return { px, py };
+            return { px: radius + (lx / range) * radius, py: radius + (lz / range) * radius };
           };
-          // Pickups
           d.pickups.forEach((p) => {
             const { px, py } = project(p.x, p.z);
             if (Math.hypot(px - radius, py - radius) > radius) return;
             ctx.fillStyle = p.kind === "medkit" ? "#ff4466" : "#ffcc33";
             ctx.fillRect(px - 2, py - 2, 4, 4);
           });
-          // Enemies
           d.enemies.forEach((e) => {
             const { px, py } = project(e.x, e.z);
             if (Math.hypot(px - radius, py - radius) > radius) return;
-            let color = "#dd3333";
-            let r = 3;
+            let color = "#dd3333", r = 3;
             if (e.kind === "boss") { color = "#ff00ff"; r = 5; }
             else if (e.kind === "runner") { color = "#ff7733"; r = 2.5; }
             else if (e.kind === "tank") { color = "#883333"; r = 4; }
             ctx.fillStyle = color;
             ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
           });
-          // Player triangle (always at center, pointing up)
           ctx.fillStyle = "#33ff66";
           ctx.beginPath();
           ctx.moveTo(radius, radius - 8);
           ctx.lineTo(radius - 5, radius + 5);
           ctx.lineTo(radius + 5, radius + 5);
-          ctx.closePath();
-          ctx.fill();
-          // N indicator
+          ctx.closePath(); ctx.fill();
           ctx.fillStyle = "#ffffff";
           ctx.font = "bold 10px monospace";
           ctx.textAlign = "center";
@@ -176,12 +172,16 @@ function Game() {
 
   const restart = () => {
     setDead(false);
-    setHp(100); setAmmo(24); setKills(0); setWave(1); setScore(0); setStamina(100); setPaused(false);
+    setHp(100); setAmmo(24); setKills(0); setWave(1); setScore(0); setStamina(100); setPaused(false); setGrenades(3); setAds(false);
     setStarted(false);
     setTimeout(() => setStarted(true), 50);
   };
 
   const togglePause = () => gameRef.current?.togglePause();
+  const pickWeapon = (w: WeaponKind) => gameRef.current?.setWeapon(w);
+
+  const maxAmmo = MAX_AMMO[weapon] ?? 24;
+  const showScope = ads && weapon === "sniper";
 
   if (!started) {
     return (
@@ -193,14 +193,14 @@ function Game() {
             DARK FOREST
           </h1>
           <p className="text-zinc-400 text-sm md:text-base">
-            Survive waves of zombies, runners, tanks, and bosses. Collect medkits & ammo to stay alive.
+            Rifle, Shotgun, Sniper + Grenades. Survive waves of zombies, runners, tanks & bosses.
           </p>
           {highScore > 0 && (
             <p className="text-yellow-400 font-mono text-sm">🏆 HIGH SCORE: {highScore.toLocaleString()}</p>
           )}
           <div className="text-left text-xs text-zinc-500 space-y-1 bg-white/5 p-4 rounded-lg border border-white/10">
-            <p><span className="text-red-400">PC:</span> WASD = move · Shift = sprint · Mouse = look · Click = shoot · R = reload · F = torch · ESC/P = pause</p>
-            <p><span className="text-red-400">Mobile:</span> Left joystick = move · Right side = look · Buttons = shoot/torch/reload/pause</p>
+            <p><span className="text-red-400">PC:</span> WASD · Shift sprint · C crouch · Mouse look · LMB shoot · RMB ADS · R reload · G grenade · 1/2/3/4 weapon · F torch · ESC pause</p>
+            <p><span className="text-red-400">Mobile:</span> Joystick · Right side look · Buttons: fire/ADS/grenade/reload/crouch/torch/pause</p>
           </div>
           <button
             onClick={() => setStarted(true)}
@@ -217,16 +217,32 @@ function Game() {
     <div className="fixed inset-0 bg-black overflow-hidden select-none">
       <div ref={containerRef} className="absolute inset-0" />
 
-      {/* Vignette */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.85)_100%)] z-10" />
+      {/* Vignette (hidden during scope) */}
+      {!showScope && (
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.85)_100%)] z-10" />
+      )}
 
-      {/* Lightning flash overlay */}
+      {/* Sniper scope overlay */}
+      {showScope && (
+        <div className="pointer-events-none absolute inset-0 z-10">
+          <div className="absolute inset-0 bg-black" style={{
+            WebkitMaskImage: "radial-gradient(circle at center, transparent 32%, black 33%)",
+            maskImage: "radial-gradient(circle at center, transparent 32%, black 33%)",
+          }} />
+          {/* Crosshair lines */}
+          <div className="absolute top-1/2 left-0 right-0 h-px bg-black/70" />
+          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-black/70" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full border border-red-600" />
+          {/* Scope ring */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-black"
+            style={{ width: "60vmin", height: "60vmin" }} />
+        </div>
+      )}
+
       <div
         className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-150"
         style={{ background: "rgba(200,220,255,0.85)", opacity: lightning ? 1 : 0 }}
       />
-
-      {/* Blood damage overlay */}
       <div
         className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-300"
         style={{
@@ -234,20 +250,18 @@ function Game() {
           opacity: bloodFlash ? 1 : 0,
         }}
       />
-
-      {/* Low HP red pulse */}
       {hp < 35 && hp > 0 && (
-        <div
-          className="pointer-events-none absolute inset-0 z-10 animate-pulse"
-          style={{ background: "radial-gradient(ellipse at center, transparent 40%, rgba(120,0,0,0.5) 100%)" }}
-        />
+        <div className="pointer-events-none absolute inset-0 z-10 animate-pulse"
+          style={{ background: "radial-gradient(ellipse at center, transparent 40%, rgba(120,0,0,0.5) 100%)" }} />
       )}
 
-      {/* Crosshair */}
-      <div className="pointer-events-none absolute top-1/2 left-1/2 -mt-2 -ml-2 w-4 h-4 z-10">
-        <div className="absolute inset-0 border border-white/70 rounded-full" />
-        <div className="absolute top-1/2 left-1/2 w-0.5 h-0.5 -mt-0.5 -ml-0.5 bg-red-500 rounded-full" />
-      </div>
+      {/* Crosshair (hidden during scope) */}
+      {!showScope && (
+        <div className="pointer-events-none absolute top-1/2 left-1/2 -mt-2 -ml-2 w-4 h-4 z-10">
+          <div className="absolute inset-0 border border-white/70 rounded-full" />
+          <div className="absolute top-1/2 left-1/2 w-0.5 h-0.5 -mt-0.5 -ml-0.5 bg-red-500 rounded-full" />
+        </div>
+      )}
 
       {/* HUD top-left: Health + Stamina */}
       <div className="absolute top-4 left-4 text-white font-mono z-20 pointer-events-none space-y-2">
@@ -280,72 +294,73 @@ function Game() {
           <div className="text-xs uppercase tracking-widest text-red-400">Kills</div>
           <div className="text-3xl font-black">{kills}</div>
         </div>
-        <canvas
-          ref={minimapRef}
-          width={140}
-          height={140}
-          className="rounded-full border-2 border-red-700/60 shadow-[0_0_20px_rgba(180,0,0,0.4)]"
-        />
+        <canvas ref={minimapRef} width={140} height={140}
+          className="rounded-full border-2 border-red-700/60 shadow-[0_0_20px_rgba(180,0,0,0.4)]" />
       </div>
 
-      {/* Message */}
       {msg && (
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 text-white/90 font-mono text-sm bg-black/60 px-4 py-2 rounded border border-white/10 z-20">
           {msg}
         </div>
       )}
 
-      {/* Ammo */}
+      {/* Ammo + Grenades */}
       <div className="absolute bottom-6 right-6 text-white font-mono text-right z-20 pointer-events-none">
-        <div className="text-xs uppercase tracking-widest text-red-400">{weapon}</div>
-        <div className="text-3xl font-black">{weapon === "gun" ? `${ammo} / 24` : "∞"}</div>
+        <div className="text-xs uppercase tracking-widest text-red-400">{weapon}{ads ? " · ADS" : ""}</div>
+        <div className="text-3xl font-black">{weapon === "knife" ? "∞" : `${ammo} / ${maxAmmo}`}</div>
+        <div className="text-xs text-orange-300 mt-1">🧨 {grenades}</div>
       </div>
 
-      {/* Mobile controls */}
       <Joystick onMove={handleMove} />
 
+      {/* Right-side action buttons (mobile) */}
       <div className="absolute bottom-6 right-6 md:right-44 flex flex-col gap-3 z-20" style={{ marginBottom: "60px" }}>
         <button
           onTouchStart={(e) => { e.preventDefault(); gameRef.current?.attack(); }}
           onClick={() => gameRef.current?.attack()}
           className="w-20 h-20 rounded-full bg-red-700/80 border-2 border-red-400 text-white font-bold active:scale-95 transition"
-        >
-          FIRE
-        </button>
+        >FIRE</button>
+        <div className="flex gap-2">
+          <button
+            onTouchStart={(e) => { e.preventDefault(); gameRef.current?.toggleAds(); }}
+            onClick={() => gameRef.current?.toggleAds()}
+            className={`w-14 h-14 rounded-full border-2 text-white text-xs font-bold transition ${ads ? "bg-yellow-600/80 border-yellow-300" : "bg-black/40 border-white/40"}`}
+          >ADS</button>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); gameRef.current?.throwGrenade(); }}
+            onClick={() => gameRef.current?.throwGrenade()}
+            className="w-14 h-14 rounded-full bg-orange-700/70 border-2 border-orange-300 text-white text-xs font-bold"
+          >🧨</button>
+        </div>
       </div>
 
+      {/* Left-side utility buttons */}
       <div className="absolute bottom-44 left-6 flex flex-col gap-2 z-20">
-        <button
-          onClick={() => gameRef.current?.toggleFlashlight()}
-          className="w-14 h-14 rounded-full bg-yellow-500/30 border border-yellow-300/70 text-white text-xs font-bold backdrop-blur-sm"
-        >
-          TORCH
-        </button>
-        <button
-          onClick={() => gameRef.current?.reload()}
-          className="w-14 h-14 rounded-full bg-white/10 border border-white/40 text-white text-xs font-bold backdrop-blur-sm"
-        >
-          RELOAD
-        </button>
-        <button
-          onClick={togglePause}
-          className="w-14 h-14 rounded-full bg-blue-500/30 border border-blue-300/70 text-white text-xs font-bold backdrop-blur-sm"
-        >
-          PAUSE
-        </button>
-        <div className="flex gap-2">
-          <button onClick={() => gameRef.current?.setWeapon("gun")} className="w-10 h-10 rounded bg-white/10 border border-white/30 text-white text-xs">GUN</button>
-          <button onClick={() => gameRef.current?.setWeapon("knife")} className="w-10 h-10 rounded bg-white/10 border border-white/30 text-white text-xs">KNF</button>
-        </div>
+        <button onClick={() => gameRef.current?.toggleFlashlight()}
+          className="w-14 h-14 rounded-full bg-yellow-500/30 border border-yellow-300/70 text-white text-xs font-bold backdrop-blur-sm">TORCH</button>
+        <button onClick={() => gameRef.current?.reload()}
+          className="w-14 h-14 rounded-full bg-white/10 border border-white/40 text-white text-xs font-bold backdrop-blur-sm">RELOAD</button>
+        <button onClick={() => gameRef.current?.toggleCrouch()}
+          className="w-14 h-14 rounded-full bg-purple-500/30 border border-purple-300/70 text-white text-xs font-bold backdrop-blur-sm">CRCH</button>
+        <button onClick={togglePause}
+          className="w-14 h-14 rounded-full bg-blue-500/30 border border-blue-300/70 text-white text-xs font-bold backdrop-blur-sm">PAUSE</button>
+      </div>
+
+      {/* Weapon switcher */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-20">
+        {(["gun", "shotgun", "sniper", "knife"] as WeaponKind[]).map((w, i) => (
+          <button key={w} onClick={() => pickWeapon(w)}
+            className={`px-3 py-2 rounded text-xs font-bold border transition ${weapon === w ? "bg-red-700 border-red-300 text-white" : "bg-black/40 border-white/30 text-white/70"}`}>
+            {i + 1}·{w.toUpperCase().slice(0, 4)}
+          </button>
+        ))}
       </div>
 
       {/* Pause menu */}
       {paused && !dead && (
         <div className="absolute inset-0 bg-black/75 z-30 flex items-center justify-center">
           <div className="text-center space-y-6 bg-black/80 border border-red-700/50 rounded-lg p-8 shadow-[0_0_40px_rgba(180,0,0,0.4)]">
-            <h2 className="text-5xl font-black text-red-500 tracking-widest" style={{ fontFamily: "serif" }}>
-              PAUSED
-            </h2>
+            <h2 className="text-5xl font-black text-red-500 tracking-widest" style={{ fontFamily: "serif" }}>PAUSED</h2>
             <div className="text-zinc-300 font-mono text-sm space-y-1">
               <div>Wave: <span className="text-white">{wave}</span></div>
               <div>Kills: <span className="text-white">{kills}</span></div>
@@ -353,24 +368,17 @@ function Game() {
               <div>High: <span className="text-yellow-500">{highScore.toLocaleString()}</span></div>
             </div>
             <div className="flex flex-col gap-2">
-              <button onClick={togglePause} className="px-8 py-3 bg-red-700 hover:bg-red-600 text-white font-bold tracking-widest rounded border border-red-400">
-                RESUME
-              </button>
-              <button onClick={restart} className="px-8 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm rounded border border-zinc-600">
-                RESTART
-              </button>
+              <button onClick={togglePause} className="px-8 py-3 bg-red-700 hover:bg-red-600 text-white font-bold tracking-widest rounded border border-red-400">RESUME</button>
+              <button onClick={restart} className="px-8 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm rounded border border-zinc-600">RESTART</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Death */}
       {dead && (
         <div className="absolute inset-0 bg-black/80 z-30 flex items-center justify-center">
           <div className="text-center space-y-6">
-            <h2 className="text-6xl font-black text-red-600 tracking-widest" style={{ fontFamily: "serif", textShadow: "0 0 30px #800" }}>
-              YOU DIED
-            </h2>
+            <h2 className="text-6xl font-black text-red-600 tracking-widest" style={{ fontFamily: "serif", textShadow: "0 0 30px #800" }}>YOU DIED</h2>
             <div className="text-zinc-300 font-mono space-y-1">
               <div>Wave Reached: <span className="text-white font-bold">{wave}</span></div>
               <div>Kills: <span className="text-white font-bold">{kills}</span></div>
@@ -379,9 +387,7 @@ function Game() {
                 <div className="text-yellow-300 font-bold animate-pulse">🏆 NEW HIGH SCORE!</div>
               )}
             </div>
-            <button onClick={restart} className="px-8 py-3 bg-red-700 hover:bg-red-600 text-white font-bold tracking-widest rounded border border-red-400">
-              TRY AGAIN
-            </button>
+            <button onClick={restart} className="px-8 py-3 bg-red-700 hover:bg-red-600 text-white font-bold tracking-widest rounded border border-red-400">TRY AGAIN</button>
           </div>
         </div>
       )}
