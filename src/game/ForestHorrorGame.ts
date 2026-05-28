@@ -65,6 +65,15 @@ export class ForestHorrorGame {
   private raf = 0;
   private spawnTimer = 0;
 
+  // Realism systems
+  private sound = new SoundEngine();
+  private rain!: THREE.Points;
+  private rainPositions!: Float32Array;
+  private lightningFlash = 0;
+  private lightningTimer = 5 + Math.random() * 10;
+  private shake = 0;
+  private footstepCd = 0;
+
   constructor(container: HTMLElement, cb: GameCallbacks) {
     this.container = container;
     this.cb = cb;
