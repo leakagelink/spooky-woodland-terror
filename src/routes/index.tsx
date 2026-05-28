@@ -91,13 +91,15 @@ function Game() {
     });
 
     const renderMinimap = () => {
-      // Poll ADS + grenade count
+      // Poll ADS + grenade count + kind
       const g = gameRef.current;
       if (g) {
         const gc = g.getGrenades?.();
         if (typeof gc === "number") setGrenades((prev) => prev !== gc ? gc : prev);
         const a = g.isAds?.();
         if (typeof a === "boolean") setAds((prev) => prev !== a ? a : prev);
+        const gk = g.getGrenadeKind?.();
+        if (gk) setGrenadeKind((prev) => prev !== gk ? gk : prev);
       }
 
       const cv = minimapRef.current;
