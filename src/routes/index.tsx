@@ -108,6 +108,29 @@ function Game() {
       {/* Vignette */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.85)_100%)] z-10" />
 
+      {/* Lightning flash overlay */}
+      <div
+        className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-150"
+        style={{ background: "rgba(200,220,255,0.85)", opacity: lightning ? 1 : 0 }}
+      />
+
+      {/* Blood damage overlay */}
+      <div
+        className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-300"
+        style={{
+          background: "radial-gradient(ellipse at center, transparent 30%, rgba(180,0,0,0.7) 100%)",
+          opacity: bloodFlash ? 1 : 0,
+        }}
+      />
+
+      {/* Low HP red pulse */}
+      {hp < 35 && hp > 0 && (
+        <div
+          className="pointer-events-none absolute inset-0 z-10 animate-pulse"
+          style={{ background: "radial-gradient(ellipse at center, transparent 40%, rgba(120,0,0,0.5) 100%)" }}
+        />
+      )}
+
       {/* Crosshair */}
       <div className="pointer-events-none absolute top-1/2 left-1/2 -mt-2 -ml-2 w-4 h-4 z-10">
         <div className="absolute inset-0 border border-white/70 rounded-full" />
