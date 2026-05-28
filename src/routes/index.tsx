@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { ForestHorrorGame } from "@/game/ForestHorrorGame";
+import type { ForestHorrorGame as ForestHorrorGameType } from "@/game/ForestHorrorGame";
 import { Joystick } from "@/game/Joystick";
 
 export const Route = createFileRoute("/")({
@@ -18,7 +18,7 @@ export const Route = createFileRoute("/")({
 
 function Game() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const gameRef = useRef<ForestHorrorGame | null>(null);
+  const gameRef = useRef<ForestHorrorGameType | null>(null);
   const [started, setStarted] = useState(false);
   const [hp, setHp] = useState(100);
   const [ammo, setAmmo] = useState(24);
@@ -34,31 +34,40 @@ function Game() {
     let msgTimer: ReturnType<typeof setTimeout>;
     let bloodTimer: ReturnType<typeof setTimeout>;
     let lightTimer: ReturnType<typeof setTimeout>;
-    const game = new ForestHorrorGame(containerRef.current, {
-      onHealth: setHp,
-      onAmmo: (a, w) => { setAmmo(a); setWeapon(w); },
-      onKills: setKills,
-      onMessage: (m) => {
-        setMsg(m);
-        clearTimeout(msgTimer);
-        msgTimer = setTimeout(() => setMsg(""), 1500);
-      },
-      onDeath: () => setDead(true),
-      onDamage: () => {
-        setBloodFlash(true);
-        clearTimeout(bloodTimer);
-        bloodTimer = setTimeout(() => setBloodFlash(false), 350);
-      },
-      onLightning: () => {
-        setLightning(true);
-        clearTimeout(lightTimer);
-        lightTimer = setTimeout(() => setLightning(false), 200);
-      },
+    let cancelled = false;
+    let gameInstance: ForestHorrorGameType | null = null;
+
+    import("@/game/ForestHorrorGame").then(({ ForestHorrorGame }) => {
+      if (cancelled || !containerRef.current) return;
+      const game = new ForestHorrorGame(containerRef.current, {
+        onHealth: setHp,
+        onAmmo: (a: number, w: string) => { setAmmo(a); setWeapon(w); },
+        onKills: setKills,
+        onMessage: (m: string) => {
+          setMsg(m);
+          clearTimeout(msgTimer);
+          msgTimer = setTimeout(() => setMsg(""), 1500);
+        },
+        onDeath: () => setDead(true),
+        onDamage: () => {
+          setBloodFlash(true);
+          clearTimeout(bloodTimer);
+          bloodTimer = setTimeout(() => setBloodFlash(false), 350);
+        },
+        onLightning: () => {
+          setLightning(true);
+          clearTimeout(lightTimer);
+          lightTimer = setTimeout(() => setLightning(false), 200);
+        },
+      });
+      gameInstance = game;
+      gameRef.current = game;
     });
-    gameRef.current = game;
+
     return () => {
+      cancelled = true;
       clearTimeout(msgTimer); clearTimeout(bloodTimer); clearTimeout(lightTimer);
-      game.dispose(); gameRef.current = null;
+      gameInstance?.dispose(); gameRef.current = null;
     };
   }, [started]);
 
