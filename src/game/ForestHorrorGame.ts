@@ -190,14 +190,14 @@ export class ForestHorrorGame {
     );
     grip.position.set(0, -0.18, 0.1);
     this.gunMesh.add(body, barrel, grip);
-    this.gunMesh.position.set(0.3, -0.3, -0.6);
+    this.gunMesh.position.set(0.13, -0.18, -0.4);
     this.camera.add(this.gunMesh);
 
     // Knife
     this.knifeMesh = new THREE.Group();
     const blade = new THREE.Mesh(
       new THREE.BoxGeometry(0.04, 0.02, 0.35),
-      new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 1, roughness: 0.15 })
+      new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 1, roughness: 0.15, emissive: 0x222222 })
     );
     blade.position.z = -0.2;
     const handle = new THREE.Mesh(
@@ -205,7 +205,7 @@ export class ForestHorrorGame {
       new THREE.MeshStandardMaterial({ color: 0x3a2010, roughness: 0.9 })
     );
     this.knifeMesh.add(blade, handle);
-    this.knifeMesh.position.set(0.35, -0.3, -0.5);
+    this.knifeMesh.position.set(0.15, -0.18, -0.4);
     this.knifeMesh.visible = false;
     this.camera.add(this.knifeMesh);
   }
