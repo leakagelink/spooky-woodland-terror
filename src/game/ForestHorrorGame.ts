@@ -434,11 +434,12 @@ export class ForestHorrorGame {
   }
   public reload() {
     if (this.weapon !== "gun") return;
+    this.sound.init(); this.sound.reload();
     this.ammo = 24;
     this.cb.onAmmo(this.ammo, this.weapon);
     this.cb.onMessage("Reloaded");
   }
-  public attack() { this.tryAttack(); }
+  public attack() { this.sound.init(); this.tryAttack(); }
 
   private tryAttack() {
     if (this.fireCd > 0) return;
@@ -447,10 +448,13 @@ export class ForestHorrorGame {
       this.ammo--;
       this.fireCd = 0.25;
       this.muzzleFlash = 0.08;
+      this.shake = Math.max(this.shake, 0.25);
+      this.sound.shoot();
       this.cb.onAmmo(this.ammo, this.weapon);
       this.raycastHit(60, 35);
     } else {
       this.fireCd = 0.4;
+      this.sound.knife();
       this.raycastHit(2.5, 45);
     }
   }
