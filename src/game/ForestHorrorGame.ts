@@ -1984,7 +1984,9 @@ export class ForestHorrorGame {
     this.updatePlayer(dt);
     this.updateEnemies(dt);
     this.updatePickups(dt);
+    this.updateGrenades(dt);
     this.updateWeather(dt);
+
 
     // Minimap broadcast (throttled ~10Hz)
     this.minimapCd -= dt;
