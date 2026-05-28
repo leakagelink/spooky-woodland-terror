@@ -510,12 +510,25 @@ export class ForestHorrorGame {
       move.normalize();
       const sprint = this.keys["ShiftLeft"] ? 1.6 : 1.0;
       this.pos.addScaledVector(move, 4 * sprint * dt);
+      this.footstepCd -= dt;
+      if (this.footstepCd <= 0) {
+        this.sound.footstep();
+        this.footstepCd = sprint > 1 ? 0.32 : 0.45;
+      }
     }
     // Clamp inside world
     const r = Math.hypot(this.pos.x, this.pos.z);
     if (r > 120) { this.pos.x *= 120 / r; this.pos.z *= 120 / r; }
     this.pos.y = 1.7;
     this.camera.position.copy(this.pos);
+
+    // Camera shake
+    if (this.shake > 0) {
+      this.camera.position.x += (Math.random() - 0.5) * this.shake * 0.3;
+      this.camera.position.y += (Math.random() - 0.5) * this.shake * 0.3;
+      this.shake -= dt * 1.5;
+      if (this.shake < 0) this.shake = 0;
+    }
 
     if (this.fireCd > 0) this.fireCd -= dt;
 
