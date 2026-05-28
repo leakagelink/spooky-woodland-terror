@@ -198,11 +198,21 @@ export class ForestHorrorGame {
     window.addEventListener("resize", this.onResize);
     this.loop();
 
+    // Load high score
+    try {
+      const hs = localStorage.getItem("darkforest_highscore");
+      if (hs) this.highScore = parseInt(hs, 10) || 0;
+    } catch {}
+
     this.cb.onHealth(this.hp);
     this.cb.onAmmo(this.ammo, this.weapon);
     this.cb.onKills(this.kills);
-    this.cb.onMessage("Loading zombies...");
+    this.cb.onMessage("Wave 1 — Survive...");
+    this.cb.onWave?.(this.wave);
+    this.cb.onScore?.(this.score, this.highScore);
+    this.cb.onStamina?.(this.stamina);
   }
+
 
   private loadZombieModel() {
     const loader = new FBXLoader();
