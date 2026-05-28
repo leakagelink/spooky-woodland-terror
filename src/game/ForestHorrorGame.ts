@@ -768,41 +768,78 @@ export class ForestHorrorGame {
   }
 
   private spawnEnemy() {
-    // Only spawn realistic FBX zombies. Skip until the model is loaded.
     if (!this.zombieTemplate) return;
     if (this.enemies.length >= this.maxActiveZombies) return;
+
+    // Pick variant — chance increases with wave
+    let variant: ZombieVariant = "normal";
+    const roll = Math.random();
+    const runnerChance = Math.min(0.4, 0.1 + this.wave * 0.05);
+    const tankChance = Math.min(0.25, 0.05 + this.wave * 0.03);
+    if (roll < runnerChance) variant = "runner";
+    else if (roll < runnerChance + tankChance) variant = "tank";
 
     const enemy = new THREE.Group();
     const model = SkeletonUtils.clone(this.zombieTemplate) as THREE.Group;
 
-    // Tint each clone slightly differently for variety
-    const tint = new THREE.Color().setHSL(
-      0.25 + Math.random() * 0.08,
-      0.3 + Math.random() * 0.2,
-      0.32 + Math.random() * 0.1,
-    );
+    // Variant tint + scale
+    let tint: THREE.Color;
+    let scaleMul = 1;
+    let hp = 60;
+    let speed = 1.6;
+    let damage = 12;
+    let scoreValue = 100;
+    if (variant === "runner") {
+      tint = new THREE.Color(0x8a2a2a);
+      scaleMul = 0.9;
+      hp = 35;
+      speed = 3.2;
+      damage = 8;
+      scoreValue = 150;
+    } else if (variant === "tank") {
+      tint = new THREE.Color(0x2a3a1a);
+      scaleMul = 1.35;
+      hp = 180;
+      speed = 1.0;
+      damage = 22;
+      scoreValue = 300;
+    } else {
+      tint = new THREE.Color().setHSL(
+        0.25 + Math.random() * 0.08,
+        0.3 + Math.random() * 0.2,
+        0.32 + Math.random() * 0.1,
+      );
+    }
+    model.scale.multiplyScalar(scaleMul);
     model.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh && m.material) {
         const mat = (m.material as THREE.MeshStandardMaterial).clone();
         mat.color.copy(tint);
+        if (variant === "tank") {
+          mat.emissive = new THREE.Color(0x220011);
+          mat.emissiveIntensity = 0.25;
+        } else if (variant === "runner") {
+          mat.emissive = new THREE.Color(0x441100);
+          mat.emissiveIntensity = 0.35;
+        }
         m.material = mat;
         m.castShadow = true;
       }
     });
     enemy.add(model);
 
-    // Setup animation mixer with first available clip (usually walk/idle)
     let mixer: THREE.AnimationMixer | undefined;
     if (this.zombieAnimations.length > 0) {
       mixer = new THREE.AnimationMixer(model);
       const clip = this.zombieAnimations[0];
       const action = mixer.clipAction(clip);
-      action.timeScale = 1 + Math.random() * 0.3;
+      // Runners animate faster, tanks slower
+      const baseTs = variant === "runner" ? 1.8 : variant === "tank" ? 0.7 : 1;
+      action.timeScale = baseTs + Math.random() * 0.25;
       action.play();
     }
 
-    // Spawn around player at distance
     const angle = Math.random() * Math.PI * 2;
     const dist = 20 + Math.random() * 25;
     enemy.position.set(this.pos.x + Math.cos(angle) * dist, 0, this.pos.z + Math.sin(angle) * dist);
@@ -817,8 +854,9 @@ export class ForestHorrorGame {
     this.enemies.push({
       mesh: enemy,
       type: "zombie",
-      hp: 60,
-      speed: 1.6,
+      variant,
+      hp,
+      speed,
       attackCd: 0,
       alive: true,
       hitFlash: 0,
@@ -827,8 +865,11 @@ export class ForestHorrorGame {
       phase: Math.random() * Math.PI * 2,
       mixer,
       isFbxModel: true,
+      damage,
+      scoreValue,
     });
   }
+
 
   private spawnGiantEnt() {
     if (!this.giantEntTemplate) return;
