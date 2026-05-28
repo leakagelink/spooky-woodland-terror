@@ -1190,6 +1190,7 @@ export class ForestHorrorGame {
     if (e.code === "Digit4") this.setWeapon("knife");
     if (e.code === "KeyR") this.reload();
     if (e.code === "KeyG") this.throwGrenade();
+    if (e.code === "KeyB") this.cycleGrenade();
     if (e.code === "KeyC") this.toggleCrouch();
     if (e.code === "Escape" || e.code === "KeyP") this.togglePause();
   };
