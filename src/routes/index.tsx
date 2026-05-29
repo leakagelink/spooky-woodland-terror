@@ -356,8 +356,15 @@ function Game() {
       <div className="absolute bottom-6 right-6 text-white font-mono text-right z-20 pointer-events-none">
         <div className="text-xs uppercase tracking-widest text-red-400">{weapon}{ads ? " · ADS" : ""}</div>
         <div className="text-3xl font-black">{weapon === "knife" ? "∞" : `${ammo} / ${maxAmmo}`}</div>
-        <div className="text-xs text-orange-300 mt-1">
-          {grenadeKind === "frag" ? "💥" : grenadeKind === "smoke" ? "💨" : "🔥"} {grenades} <span className="text-[9px] text-zinc-400 uppercase">{grenadeKind}</span>
+        {/* Grenade badge */}
+        <div className="mt-2 inline-flex items-center gap-2 bg-black/70 border border-white/20 rounded-lg px-3 py-1.5">
+          <span className="text-lg">
+            {grenadeKind === "frag" ? "💥" : grenadeKind === "smoke" ? "💨" : "🔥"}
+          </span>
+          <div className="flex flex-col items-start leading-none">
+            <span className="text-[10px] uppercase tracking-wider text-zinc-400">{grenadeKind}</span>
+            <span className="text-lg font-black text-orange-300">× {grenades}</span>
+          </div>
         </div>
       </div>
 
