@@ -48,13 +48,15 @@ function Game() {
   const [grenades, setGrenades] = useState(3);
   const [ads, setAds] = useState(false);
   const [grenadeKind, setGrenadeKind] = useState<GrenadeKind>("frag");
-  const [difficulty, setDifficulty] = useState<Difficulty>(() => {
+  const [difficulty, setDifficulty] = useState<Difficulty>("normal");
+  useEffect(() => {
     try {
       const saved = localStorage.getItem("df_difficulty");
-      if (saved === "easy" || saved === "normal" || saved === "hard") return saved;
+      if (saved === "easy" || saved === "normal" || saved === "hard") {
+        setDifficulty(saved);
+      }
     } catch { /* ignore */ }
-    return "normal";
-  });
+  }, []);
   useEffect(() => {
     try { localStorage.setItem("df_difficulty", difficulty); } catch { /* ignore */ }
   }, [difficulty]);
