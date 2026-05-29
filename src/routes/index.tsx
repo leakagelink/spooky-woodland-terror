@@ -55,6 +55,9 @@ function Game() {
     } catch { /* ignore */ }
     return "normal";
   });
+  useEffect(() => {
+    try { localStorage.setItem("df_difficulty", difficulty); } catch { /* ignore */ }
+  }, [difficulty]);
 
   useEffect(() => {
     if (!started || !containerRef.current) return;
