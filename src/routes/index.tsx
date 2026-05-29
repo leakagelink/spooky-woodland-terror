@@ -24,7 +24,7 @@ type MinimapData = {
 
 const MAX_AMMO: Record<string, number> = { gun: 24, shotgun: 6, sniper: 5, knife: 0 };
 
-function Game() {
+export function Game() {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<ForestHorrorGameType | null>(null);
   const minimapRef = useRef<HTMLCanvasElement>(null);
