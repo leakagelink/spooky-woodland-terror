@@ -322,6 +322,19 @@ function Game() {
         </div>
         <canvas ref={minimapRef} width={140} height={140}
           className="rounded-full border-2 border-red-700/60 shadow-[0_0_20px_rgba(180,0,0,0.4)]" />
+        {/* Minimap Legend */}
+        <div className="bg-black/70 border border-white/20 rounded px-2 py-1.5 pointer-events-none mt-1">
+          <div className="text-[10px] text-zinc-400 uppercase tracking-wider mb-1 text-center">Legend</div>
+          <div className="flex flex-col gap-1 text-[10px]">
+            <div className="flex items-center gap-1.5"><span className="inline-block w-2 h-2 rounded-full bg-[#dd3333]" />Zombie</div>
+            <div className="flex items-center gap-1.5"><span className="inline-block w-2 h-2 rounded-full bg-[#ff7733]" />Runner</div>
+            <div className="flex items-center gap-1.5"><span className="inline-block w-2.5 h-2.5 rounded-full bg-[#ffaa22]" />Charger</div>
+            <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-[#883333]" />Tank</div>
+            <div className="flex items-center gap-1.5"><span className="inline-block w-3.5 h-3.5 rounded-full bg-[#ff00ff]" />Boss</div>
+            <div className="flex items-center gap-1.5"><span className="inline-block w-2 h-2 bg-[#ff4466]" />Medkit</div>
+            <div className="flex items-center gap-1.5"><span className="inline-block w-2 h-2 bg-[#ffcc33]" />Ammo</div>
+          </div>
+        </div>
       </div>
 
       {msg && (
