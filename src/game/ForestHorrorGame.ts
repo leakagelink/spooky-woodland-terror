@@ -124,6 +124,7 @@ export class ForestHorrorGame {
   private grenadeKind: GrenadeKind = "frag";
   private grenades: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number; kind: GrenadeKind }[] = [];
   private burnZones: BurnZone[] = [];
+  private fxEffects: { update: (dt: number) => boolean; dispose: () => void }[] = [];
 
   // Difficulty
   private difficulty: Difficulty = "normal";
