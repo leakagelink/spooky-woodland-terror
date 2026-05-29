@@ -257,8 +257,79 @@ export class SoundEngine {
     src.start(now);
   }
 
+  /** Long hissing smoke release; returns a stop() handle. */
+  smokeHiss(dur = 2.5): () => void {
+    if (!this.ctx || !this.master) return () => {};
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * 0.7;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass"; hp.frequency.value = 1800;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass"; bp.frequency.value = 4200; bp.Q.value = 0.6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0, now);
+    g.gain.linearRampToValueAtTime(0.45, now + 0.15);
+    g.gain.setValueAtTime(0.45, now + dur * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    src.connect(hp).connect(bp).connect(g).connect(this.master);
+    src.start(now); src.stop(now + dur + 0.05);
+    return () => { try { src.stop(); } catch {} };
+  }
+
+  /** Crackling fire/roar loop for incendiary; returns a stop() handle. */
+  fireRoar(dur = 5): () => void {
+    if (!this.ctx || !this.master) return () => {};
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    // Roar bed
+    const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 900;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.linearRampToValueAtTime(0.55, now + 0.2);
+    g.gain.setValueAtTime(0.5, now + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    src.connect(lp).connect(g).connect(this.master);
+    src.start(now); src.stop(now + dur + 0.05);
+
+    // Crackles — random short pops
+    const crackleTimers: number[] = [];
+    const scheduleCrackle = () => {
+      const t = window.setTimeout(() => {
+        if (!this.ctx || !this.master) return;
+        const cn = ctx.currentTime;
+        const cb = ctx.createBuffer(1, ctx.sampleRate * 0.06, ctx.sampleRate);
+        const cd = cb.getChannelData(0);
+        for (let i = 0; i < cd.length; i++) cd[i] = (Math.random() * 2 - 1) * (1 - i / cd.length);
+        const cs = ctx.createBufferSource(); cs.buffer = cb;
+        const cf = ctx.createBiquadFilter(); cf.type = "bandpass"; cf.frequency.value = 1500 + Math.random() * 2500; cf.Q.value = 2;
+        const cg = ctx.createGain();
+        cg.gain.setValueAtTime(0.25, cn);
+        cg.gain.exponentialRampToValueAtTime(0.001, cn + 0.08);
+        cs.connect(cf).connect(cg).connect(this.master);
+        cs.start(cn); cs.stop(cn + 0.09);
+        scheduleCrackle();
+      }, 60 + Math.random() * 180);
+      crackleTimers.push(t);
+    };
+    scheduleCrackle();
+    const stopT = window.setTimeout(() => crackleTimers.forEach(clearTimeout), dur * 1000);
+    return () => { try { src.stop(); } catch {}; crackleTimers.forEach(clearTimeout); clearTimeout(stopT); };
+  }
+
   dispose() {
     try { this.ctx?.close(); } catch {}
     this.ctx = null;
   }
 }
+
