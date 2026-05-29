@@ -124,6 +124,7 @@ export class ForestHorrorGame {
   private grenadeKind: GrenadeKind = "frag";
   private grenades: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number; kind: GrenadeKind }[] = [];
   private burnZones: BurnZone[] = [];
+  private fxEffects: { update: (dt: number) => boolean; dispose: () => void }[] = [];
 
   // Difficulty
   private difficulty: Difficulty = "normal";
@@ -1420,7 +1421,30 @@ export class ForestHorrorGame {
       if (b.t <= 0) { this.scene.remove(b.mesh); return false; }
       return true;
     });
+
+    // Particle effects (smoke/fire)
+    this.fxEffects = this.fxEffects.filter((fx) => {
+      const alive = fx.update(dt);
+      if (!alive) fx.dispose();
+      return alive;
+    });
   }
+
+  private static _softTex: THREE.Texture | null = null;
+  private getSoftTex(): THREE.Texture {
+    if (ForestHorrorGame._softTex) return ForestHorrorGame._softTex;
+    const c = document.createElement("canvas"); c.width = c.height = 128;
+    const g = c.getContext("2d")!;
+    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0, "rgba(255,255,255,1)");
+    grad.addColorStop(0.4, "rgba(255,255,255,0.55)");
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+    const t = new THREE.CanvasTexture(c);
+    ForestHorrorGame._softTex = t;
+    return t;
+  }
+
 
   private explodeGrenade(g: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number; kind: GrenadeKind }) {
     const pos = g.mesh.position.clone();
@@ -1470,32 +1494,73 @@ export class ForestHorrorGame {
       }
       this.shake = Math.max(this.shake, Math.min(1.2, 1.2 * (1 - pd / 30)));
     } else if (g.kind === "smoke") {
-      // Persistent smoke cloud: slows + blinds enemies in radius for 6s
+      // Persistent smoke cloud: dense particle puffs + hiss audio
       const radius = 7;
-      const cloud = new THREE.Mesh(
-        new THREE.SphereGeometry(radius, 16, 12),
-        new THREE.MeshBasicMaterial({ color: 0xbbbbcc, transparent: true, opacity: 0.45, depthWrite: false }),
-      );
-      cloud.position.copy(pos); cloud.position.y = 1.5;
-      this.scene.add(cloud);
-      let life = 6;
-      const mat = cloud.material as THREE.MeshBasicMaterial;
-      const tick = () => {
-        life -= 0.1;
-        cloud.scale.setScalar(1 + (6 - life) * 0.05);
-        mat.opacity = Math.max(0, Math.min(0.55, life * 0.1));
-        // slow enemies inside
-        for (const e of this.enemies) {
-          if (!e.alive) continue;
-          if (e.mesh.position.distanceTo(pos) < radius) e.slowT = 0.4;
-        }
-        if (life > 0) setTimeout(tick, 100);
-        else this.scene.remove(cloud);
+      const tex = this.getSoftTex();
+      const group = new THREE.Group();
+      group.position.copy(pos); group.position.y = 0.2;
+      this.scene.add(group);
+      type Puff = { sp: THREE.Sprite; vy: number; vx: number; vz: number; spin: number; age: number; life: number; baseScale: number; mat: THREE.SpriteMaterial };
+      const puffs: Puff[] = [];
+      const spawnPuff = (initial = false) => {
+        const mat = new THREE.SpriteMaterial({ map: tex, color: 0xc8ccd6, transparent: true, opacity: 0, depthWrite: false });
+        const sp = new THREE.Sprite(mat);
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.random() * (initial ? radius * 0.6 : radius * 0.3);
+        sp.position.set(Math.cos(a) * r, 0.2 + Math.random() * 0.4, Math.sin(a) * r);
+        const baseScale = 2.2 + Math.random() * 2.4;
+        sp.scale.setScalar(baseScale * 0.4);
+        group.add(sp);
+        puffs.push({ sp, vy: 0.25 + Math.random() * 0.45, vx: (Math.random() - 0.5) * 0.4, vz: (Math.random() - 0.5) * 0.4, spin: (Math.random() - 0.5) * 0.6, age: 0, life: 5 + Math.random() * 2.5, baseScale, mat });
       };
-      tick();
+      for (let i = 0; i < 28; i++) spawnPuff(true);
+      const hissStop = this.sound.smokeHiss(2.6);
+      let totalLife = 7.5;
+      let emitCd = 0;
+      const fx = {
+        update: (dt: number) => {
+          totalLife -= dt;
+          emitCd -= dt;
+          if (totalLife > 4 && emitCd <= 0) { emitCd = 0.12; spawnPuff(false); }
+          for (const p of puffs) {
+            p.age += dt;
+            p.sp.position.x += p.vx * dt;
+            p.sp.position.y += p.vy * dt;
+            p.sp.position.z += p.vz * dt;
+            p.sp.material.rotation += p.spin * dt;
+            const t = p.age / p.life;
+            const s = p.baseScale * (0.4 + t * 1.6);
+            p.sp.scale.setScalar(s);
+            p.mat.opacity = Math.sin(Math.min(1, t) * Math.PI) * 0.65;
+          }
+          // slow enemies inside cloud
+          for (const e of this.enemies) {
+            if (!e.alive) continue;
+            if (e.mesh.position.distanceTo(pos) < radius) e.slowT = 0.4;
+          }
+          // Player vision haze when inside
+          const pd = this.pos.distanceTo(pos);
+          if (pd < radius && this.scene.fog) {
+            const fog = this.scene.fog as THREE.Fog;
+            const target = 14;
+            fog.far = Math.max(target, fog.far - dt * 30);
+          }
+          // prune dead puffs
+          for (let i = puffs.length - 1; i >= 0; i--) {
+            if (puffs[i].age >= puffs[i].life) {
+              group.remove(puffs[i].sp);
+              puffs[i].mat.dispose();
+              puffs.splice(i, 1);
+            }
+          }
+          return totalLife > 0 && puffs.length > 0;
+        },
+        dispose: () => { this.scene.remove(group); puffs.forEach(p => p.mat.dispose()); hissStop(); },
+      };
+      this.fxEffects.push(fx);
       this.cb.onMessage("Smoke deployed!");
     } else {
-      // incendiary: burn zone
+      // Incendiary: burn zone + fire particles + embers + flicker light + roar
       this.sound.thunder();
       const radius = 4.5;
       const ringMat = new THREE.MeshBasicMaterial({ color: 0xff5522, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false });
@@ -1503,10 +1568,63 @@ export class ForestHorrorGame {
       ring.position.copy(pos); ring.position.y = 0.05; ring.rotation.x = -Math.PI / 2;
       this.scene.add(ring);
       this.burnZones.push({ mesh: ring, pos: pos.clone(), t: 5, radius, ringMat });
-      const flash = new THREE.PointLight(0xff5522, 12, 18, 2);
-      flash.position.copy(pos); flash.position.y = 1;
-      this.scene.add(flash);
-      setTimeout(() => this.scene.remove(flash), 5000);
+
+      const tex = this.getSoftTex();
+      const group = new THREE.Group();
+      group.position.copy(pos); group.position.y = 0;
+      this.scene.add(group);
+      type Flame = { sp: THREE.Sprite; vy: number; age: number; life: number; baseScale: number; mat: THREE.SpriteMaterial; ember: boolean };
+      const flames: Flame[] = [];
+      const spawnFlame = () => {
+        const ember = Math.random() < 0.25;
+        const color = ember ? 0xffd066 : (Math.random() < 0.5 ? 0xff5522 : 0xffa033);
+        const mat = new THREE.SpriteMaterial({ map: tex, color, transparent: true, opacity: 0.0, depthWrite: false, blending: THREE.AdditiveBlending });
+        const sp = new THREE.Sprite(mat);
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.random() * radius * 0.85;
+        sp.position.set(Math.cos(a) * r, 0.1, Math.sin(a) * r);
+        const baseScale = ember ? 0.18 + Math.random() * 0.15 : 1.0 + Math.random() * 1.4;
+        sp.scale.setScalar(baseScale);
+        group.add(sp);
+        flames.push({ sp, vy: ember ? 1.8 + Math.random() * 1.4 : 1.0 + Math.random() * 0.8, age: 0, life: ember ? 1.2 : 0.7 + Math.random() * 0.5, baseScale, mat, ember });
+      };
+
+      const flicker = new THREE.PointLight(0xff6a22, 18, 22, 2);
+      flicker.position.copy(pos); flicker.position.y = 1.2;
+      this.scene.add(flicker);
+      const roarStop = this.sound.fireRoar(5);
+
+      let life = 5;
+      let emitCd = 0;
+      const fx = {
+        update: (dt: number) => {
+          life -= dt;
+          emitCd -= dt;
+          if (life > 0 && emitCd <= 0) {
+            emitCd = 0.04;
+            for (let i = 0; i < 3; i++) spawnFlame();
+          }
+          for (const f of flames) {
+            f.age += dt;
+            f.sp.position.y += f.vy * dt;
+            const t = f.age / f.life;
+            f.mat.opacity = Math.sin(Math.min(1, t) * Math.PI) * (f.ember ? 0.9 : 0.85);
+            if (!f.ember) f.sp.scale.setScalar(f.baseScale * (1 + t * 0.6));
+          }
+          for (let i = flames.length - 1; i >= 0; i--) {
+            if (flames[i].age >= flames[i].life) {
+              group.remove(flames[i].sp);
+              flames[i].mat.dispose();
+              flames.splice(i, 1);
+            }
+          }
+          flicker.intensity = 14 + Math.sin(performance.now() * 0.02) * 4 + Math.random() * 4;
+          if (life <= 0 && flames.length === 0) return false;
+          return true;
+        },
+        dispose: () => { this.scene.remove(group); this.scene.remove(flicker); flames.forEach(f => f.mat.dispose()); roarStop(); },
+      };
+      this.fxEffects.push(fx);
       this.cb.onMessage("Fire spreads!");
     }
   }
