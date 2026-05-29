@@ -1629,8 +1629,6 @@ export class ForestHorrorGame {
     }
   }
 
-  }
-
   public getGrenades() { return this.grenadeCount; }
 
 
