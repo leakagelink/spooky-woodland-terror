@@ -11,6 +11,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), tsconfigPaths()],
   root: path.resolve(__dirname, "mobile"),
   base: "./",
+  // IMPORTANT: serve assets from project-root /public (models, textures, sounds)
+  // so the Capacitor APK bundles /models/**, /sounds/**, etc.
+  publicDir: path.resolve(__dirname, "public"),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
@@ -20,5 +23,6 @@ export default defineConfig({
     outDir: path.resolve(__dirname, "dist/mobile"),
     emptyOutDir: true,
     target: "es2020",
+    assetsInlineLimit: 0,
   },
 });
