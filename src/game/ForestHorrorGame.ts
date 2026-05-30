@@ -2182,14 +2182,14 @@ export class ForestHorrorGame {
 
   private loop = () => {
     if (!this.running) {
-      this.composer.render();
+      this.renderFrame();
       return;
     }
     this.raf = requestAnimationFrame(this.loop);
     const dt = Math.min(0.05, this.clock.getDelta());
 
     if (this.paused) {
-      this.composer.render();
+      this.renderFrame();
       return;
     }
 
@@ -2254,7 +2254,7 @@ export class ForestHorrorGame {
       this.bloomPass.strength = 0.35 + boost + ltn;
     }
 
-    this.composer.render();
+    this.renderFrame();
   };
 
 
