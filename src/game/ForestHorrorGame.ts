@@ -2180,6 +2180,11 @@ export class ForestHorrorGame {
     }
   }
 
+  private renderFrame() {
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
+  }
+
   private loop = () => {
     if (!this.running) {
       this.renderFrame();
