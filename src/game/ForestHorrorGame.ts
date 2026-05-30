@@ -215,13 +215,21 @@ export class ForestHorrorGame {
     else if (difficulty === "hard") { this.dmgMul = 1.6; this.spawnMul = 0.7; this.grenadeCount = 2; }
 
 
+    // Mobile / low-power detection — disables expensive effects on Android/iOS
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    this.isMobile =
+      /Android|iPhone|iPad|iPod|Mobile|Capacitor/i.test(ua) ||
+      (typeof window !== "undefined" && window.innerWidth < 900);
+
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: !this.isMobile,
       powerPreference: "high-performance",
+      stencil: false,
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const maxDPR = this.isMobile ? 1 : 2;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDPR));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = !this.isMobile;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.35;
