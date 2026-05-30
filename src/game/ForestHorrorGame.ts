@@ -496,8 +496,9 @@ export class ForestHorrorGame {
     // Sunlight — primary shadow caster
     const sun = new THREE.DirectionalLight(0xfff5d1, 1.8);
     sun.position.set(20, 45, 10);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.castShadow = !this.isMobile;
+    const shadowSize = this.isMobile ? 512 : 1024;
+    sun.shadow.mapSize.set(shadowSize, shadowSize);
     sun.shadow.camera.near = 1;
     sun.shadow.camera.far = 120;
     sun.shadow.camera.left = -60;
