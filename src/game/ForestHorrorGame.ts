@@ -206,6 +206,7 @@ export class ForestHorrorGame {
   private reloading = 0; // seconds remaining; 0 = not reloading
   private readonly reloadDuration = 1.6;
   private magMesh!: THREE.Mesh;
+  private isMobile = false;
 
   constructor(container: HTMLElement, cb: GameCallbacks, difficulty: Difficulty = "normal") {
     this.container = container;
