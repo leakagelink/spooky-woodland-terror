@@ -206,6 +206,7 @@ export class ForestHorrorGame {
   private reloading = 0; // seconds remaining; 0 = not reloading
   private readonly reloadDuration = 1.6;
   private magMesh!: THREE.Mesh;
+  private isMobile = false;
 
   constructor(container: HTMLElement, cb: GameCallbacks, difficulty: Difficulty = "normal") {
     this.container = container;
@@ -215,13 +216,21 @@ export class ForestHorrorGame {
     else if (difficulty === "hard") { this.dmgMul = 1.6; this.spawnMul = 0.7; this.grenadeCount = 2; }
 
 
+    // Mobile / low-power detection — disables expensive effects on Android/iOS
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    this.isMobile =
+      /Android|iPhone|iPad|iPod|Mobile|Capacitor/i.test(ua) ||
+      (typeof window !== "undefined" && window.innerWidth < 900);
+
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: !this.isMobile,
       powerPreference: "high-performance",
+      stencil: false,
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const maxDPR = this.isMobile ? 1 : 2;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDPR));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = !this.isMobile;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.35;
@@ -229,21 +238,21 @@ export class ForestHorrorGame {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x87CEEB);
-    this.fog = new THREE.FogExp2(0xc8e0c8, 0.012);
+    this.fog = new THREE.FogExp2(0xc8e0c8, this.isMobile ? 0.025 : 0.012);
     this.scene.fog = this.fog;
 
     this.camera = new THREE.PerspectiveCamera(
       75,
       container.clientWidth / container.clientHeight,
       0.1,
-      200,
+      this.isMobile ? 90 : 200,
     );
     this.camera.position.copy(this.pos);
 
     this.buildWorld();
     this.buildPlayerWeapons();
     this.bindInput();
-    this.setupPostProcessing();
+    if (!this.isMobile) this.setupPostProcessing();
     this.loadZombieModel();
     this.loadGiantEntModel();
     this.loadFallenAngelModel();
@@ -487,8 +496,9 @@ export class ForestHorrorGame {
     // Sunlight — primary shadow caster
     const sun = new THREE.DirectionalLight(0xfff5d1, 1.8);
     sun.position.set(20, 45, 10);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.castShadow = !this.isMobile;
+    const shadowSize = this.isMobile ? 512 : 1024;
+    sun.shadow.mapSize.set(shadowSize, shadowSize);
     sun.shadow.camera.near = 1;
     sun.shadow.camera.far = 120;
     sun.shadow.camera.left = -60;
@@ -2170,16 +2180,21 @@ export class ForestHorrorGame {
     }
   }
 
+  private renderFrame() {
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
+  }
+
   private loop = () => {
     if (!this.running) {
-      this.composer.render();
+      this.renderFrame();
       return;
     }
     this.raf = requestAnimationFrame(this.loop);
     const dt = Math.min(0.05, this.clock.getDelta());
 
     if (this.paused) {
-      this.composer.render();
+      this.renderFrame();
       return;
     }
 
@@ -2244,7 +2259,7 @@ export class ForestHorrorGame {
       this.bloomPass.strength = 0.35 + boost + ltn;
     }
 
-    this.composer.render();
+    this.renderFrame();
   };
 
 
